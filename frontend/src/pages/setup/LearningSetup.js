@@ -27,7 +27,7 @@ export default function LearningSetup() {
         <div className="h-11 w-11 rounded-md bg-secondary flex items-center justify-center"><Brain size={22} /></div>
         <div>
           <h1 className="font-display text-3xl font-black tracking-tighter">Apprendimento</h1>
-          <p className="text-sm text-muted-foreground">Ogni ordine validato insegna a Voxera. Queste regole migliorano i prossimi abbinamenti.</p>
+          <p className="text-sm text-muted-foreground">Ogni ordine validato insegna a Ordia. Queste regole migliorano i prossimi abbinamenti.</p>
         </div>
       </div>
 
@@ -42,7 +42,7 @@ export default function LearningSetup() {
         ) : filtered.length === 0 ? (
           <div className="p-16 text-center">
             <Brain size={36} className="mx-auto text-slate-300" />
-            <p className="mt-3 text-sm text-muted-foreground">Ancora nessuna regola appresa. Valida qualche ordine e Voxera inizierà a imparare.</p>
+            <p className="mt-3 text-sm text-muted-foreground">Ancora nessuna regola appresa. Valida qualche ordine e Ordia inizierà a imparare.</p>
           </div>
         ) : (
           <table className="w-full text-sm">

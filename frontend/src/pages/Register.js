@@ -49,8 +49,8 @@ export default function Register() {
       <div className="flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-sm animate-fade-up">
           <div className="flex items-center gap-2 mb-8">
-            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/83180b875dd7d960f1e8b0c3e9c25882592c405a6735c59d22741323d2c5bb10.png" alt="Voxera" className="h-8 w-8 rounded-md object-contain" />
-            <span className="font-display font-bold text-xl tracking-[0.18em]">VOXERA</span>
+            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/f48a6da9e542afeb70dc61c881f950dab8093983969418d5f0951a43da9ae302.png" alt="Ordia" className="h-8 w-8 rounded-md object-contain" />
+            <span className="font-display font-bold text-xl tracking-[0.18em]">ORDIA</span>
           </div>
 
           <h1 className="font-display text-3xl font-black tracking-tighter mb-1">Crea il tuo spazio</h1>
@@ -99,7 +99,7 @@ export default function Register() {
             Il sistema operativo per la gestione ordini.
           </h2>
           <p className="mt-3 text-sm text-white/70 max-w-md leading-relaxed">
-            Ogni correzione dell'operatore insegna a Voxera. Impara i tuoi clienti, le loro abitudini e le
+            Ogni correzione dell'operatore insegna a Ordia. Impara i tuoi clienti, le loro abitudini e le
             loro abbreviazioni — e non ripete mai un errore.
           </p>
         </div>

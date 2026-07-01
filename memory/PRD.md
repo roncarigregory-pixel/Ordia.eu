@@ -65,5 +65,5 @@ Core workflow: Receive → Understand → Extract → Validate → Learn → Exp
 - Turn off pilot mode (REACT_APP_PILOT_MODE=false) for real customer onboarding.
 
 ## Implemented — Brand + Milestone 1 (2026-07-01)
-- Rebrand to **Voxera**: evolved navy "V" logo mark, uppercase VOXERA wordmark (Satoshi), midnight-blue (#0B1E3B) + white theme, favicon. Demo login stays demo@ordia.app/demo123.
+- **Brand: Ordia** (final). Domain chosen: **ordia.eu** (verified available via WHOIS EURid + RDAP; ordia.com is taken/aftermarket). Identity: evolved navy "O" ring mark, uppercase ORDIA wordmark (Satoshi), midnight-blue (#0B1E3B) + white theme, favicon (white O on navy tile), horizontal lockup asset. Demo login demo@ordia.app/demo123. (Note: briefly explored "Voxera" then reverted fully to Ordia.)
 - Milestone 1 — Learning Loop (P0): every validated order teaches Voxera. Confirmed line phrases persist as company-scoped learned aliases (`learned_aliases`), merged into the extraction catalog context AND applied as deterministic high-confidence overrides so the AI never repeats a matching mistake. New "Apprendimento" page (/app/setup/learning) to view/remove rules. Verified end-to-end via curl (unknown phrase → corrected → auto-matched at 0.97+ next time).

@@ -544,7 +544,7 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
     await db.orders.update_one(
         {"id": order_id}, {"$set": {"status": "validated", "updated_at": now_iso()}})
     order["status"] = "validated"
-    await learn_from_order(user["company_id"], order)  # every confirmed line teaches Voxera
+    await learn_from_order(user["company_id"], order)  # every confirmed line teaches Ordia
     return order
 
 @api.get("/learning")
@@ -729,7 +729,7 @@ class WhatsAppConnect(BaseModel):
 
 class WhatsAppTest(BaseModel):
     to: str
-    text: str = "Ciao! Questo è un messaggio di prova da Voxera. La connessione WhatsApp funziona. ✅"
+    text: str = "Ciao! Questo è un messaggio di prova da Ordia. La connessione WhatsApp funziona. ✅"
 
 class EmailConnect(BaseModel):
     inbound_provider: Optional[str] = None  # gmail | m365 | imap | forwarding
@@ -950,7 +950,7 @@ async def whatsapp_webhook_receive(request: Request):
 @api.get("/integrations/email")
 async def email_get(user: dict = Depends(get_current_user)):
     doc = await _get_integration(user["company_id"], "email")
-    forwarding = f"orders-{user['company_id'][:8]}@inbound.voxera.com"
+    forwarding = f"orders-{user['company_id'][:8]}@inbound.ordia.eu"
     if not doc:
         return {"status": "not_configured", "forwarding_address": forwarding}
     doc.pop("inbound_password", None)
@@ -1012,7 +1012,7 @@ async def email_validate(user: dict = Depends(get_current_user)):
 def standardize_order(order: dict, company: dict) -> dict:
     """Canonical internal export format — the single contract every ERP connector consumes."""
     return {
-        "schema": "voxera.order.v1",
+        "schema": "ordia.order.v1",
         "order_id": order["id"],
         "company": {"id": company.get("id"), "name": company.get("name"), "vat": company.get("vat")},
         "customer": {"name": order.get("customer_name")},

@@ -33,8 +33,8 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-sm animate-fade-up">
           <div className="flex items-center gap-2 mb-10">
-            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/83180b875dd7d960f1e8b0c3e9c25882592c405a6735c59d22741323d2c5bb10.png" alt="Voxera" className="h-8 w-8 rounded-md object-contain" />
-            <span className="font-display font-bold text-xl tracking-[0.18em]">VOXERA</span>
+            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/f48a6da9e542afeb70dc61c881f950dab8093983969418d5f0951a43da9ae302.png" alt="Ordia" className="h-8 w-8 rounded-md object-contain" />
+            <span className="font-display font-bold text-xl tracking-[0.18em]">ORDIA</span>
           </div>
 
           <h1 className="font-display text-3xl font-black tracking-tighter mb-1">Bentornato</h1>
@@ -84,7 +84,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-sm text-muted-foreground">
-            Nuovo su Voxera?{" "}
+            Nuovo su Ordia?{" "}
             <Link data-testid="go-to-register" to="/register" className="font-medium text-foreground underline underline-offset-4">
               Crea un account
             </Link>
@@ -105,7 +105,7 @@ export default function Login() {
             Basta riscrivere gli ordini a mano.
           </h2>
           <p className="mt-3 text-sm text-white/70 max-w-md leading-relaxed">
-            Voxera legge gli ordini da WhatsApp, email, PDF, fogli di calcolo e foto — poi estrae,
+            Ordia legge gli ordini da WhatsApp, email, PDF, fogli di calcolo e foto — poi estrae,
             abbina e valida automaticamente. Tu devi solo confermare.
           </p>
         </div>
