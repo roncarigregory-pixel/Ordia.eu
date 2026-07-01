@@ -43,11 +43,22 @@ Core workflow: Receive → Understand → Extract → Validate → Learn → Exp
 
 ## Backlog (prioritized)
 - P0: "Learning" loop — persist operator corrections as customer-specific aliases to auto-improve future matches.
-- P1: Email & WhatsApp inbound ingestion (webhook/forwarding address); customer directory.
-- P1: Real ERP export connectors (webhook/REST); order edit history/audit log.
-- P2: Phone-call ingestion; role-based team members; per-customer price lists; analytics over time.
-- P2: Split server.py into routers/services; add error state to Dashboard on API failure; remove demo hint in prod.
+- P1: Real inbound email polling (IMAP fetch + attachment parsing) & WhatsApp production webhook subscription automation.
+- P1: Dedicated ERP connectors (SAP, Business Central, Zucchetti, TeamSystem, Oracle, Sage, Odoo, Dynamics) on top of ordia.order.v1.
+- P1: Email invites for team members (token link) + granular per-role permission enforcement in UI.
+- P2: Phone-call ingestion; per-customer price lists; analytics over time; multiple WhatsApp numbers per company UI.
+- P2: Split server.py into routers/services; encrypt stored access tokens at rest.
+
+## Implemented — Iteration 3 (2026-07-01): Onboarding & Integrations
+- Setup hub (/app/setup) with live progress checklist (6 steps) and integration cards.
+- Guided WhatsApp Business wizard: prerequisites → credentials → real-time Graph API validation (activates on valid creds) → test message → done (webhook URL + verify token). Graceful, localized error hints + troubleshooting.
+- Email channel: inbound (forwarding address / Gmail / M365 / IMAP) + outbound SMTP, with real IMAP/SMTP validation.
+- ERP export layer: provider-based & ERP-agnostic (webhook/REST; JSON/CSV/XML) with standardized `ordia.order.v1` format, real "send sample order" test, and per-order push-to-ERP.
+- Team management with RBAC (owner/admin/sales/operator/warehouse/readonly); Company settings.
+- WhatsApp inbound webhook auto-creates draft orders via the extraction pipeline.
+- Tested: iteration_3 → 21/21 backend, full frontend E2E, all pass (1 minor ERP-save bug fixed).
 
 ## Next Tasks
-- Implement the learning loop (P0) once pilot feedback is gathered.
+- Implement the learning loop (P0).
+- Wire real inbound email polling + WhatsApp webhook subscription automation.
 - Turn off pilot mode (REACT_APP_PILOT_MODE=false) for real customer onboarding.
