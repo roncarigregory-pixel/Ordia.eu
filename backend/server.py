@@ -642,6 +642,104 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         "recent": orders[:8],
     }
 
+def _order_total(o: dict) -> float:
+    return round(sum((i.get("price") or 0) * (i.get("quantity") or 0) for i in o.get("line_items", [])), 2)
+
+def _aggregate_customers(orders: List[dict]) -> List[dict]:
+    by_name = {}
+    for o in orders:
+        name = (o.get("customer_name") or "Sconosciuto").strip() or "Sconosciuto"
+        c = by_name.setdefault(name, {"name": name, "orders": 0, "volume": 0.0, "last_order": None, "products": {}})
+        c["orders"] += 1
+        c["volume"] += _order_total(o)
+        if not c["last_order"] or o["created_at"] > c["last_order"]:
+            c["last_order"] = o["created_at"]
+        for i in o.get("line_items", []):
+            nm = i.get("matched_name")
+            if nm:
+                c["products"][nm] = c["products"].get(nm, 0) + 1
+    result = []
+    for c in by_name.values():
+        fav = sorted(c["products"].items(), key=lambda x: -x[1])[:3]
+        result.append({**c, "volume": round(c["volume"], 2),
+                       "favorite_products": [f[0] for f in fav], "products": None})
+    result.sort(key=lambda x: x["last_order"] or "", reverse=True)
+    return result
+
+@api.get("/command-center")
+async def command_center(user: dict = Depends(get_current_user)):
+    cid = user["company_id"]
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    today = datetime.now(timezone.utc).date().isoformat()
+    todays = [o for o in orders if (o.get("created_at") or "").startswith(today)]
+    auto = sum(1 for o in todays if o["status"] in ("ready", "validated", "exported"))
+    review_today = sum(1 for o in todays if o["status"] == "needs_review")
+    to_review = [o for o in orders if o["status"] == "needs_review"][:6]
+    learned_week = await db.learned_aliases.count_documents({"company_id": cid})
+    customers = _aggregate_customers(orders)
+
+    notifications = []
+    if review_today or to_review:
+        notifications.append({"type": "review", "text": f"{len(to_review)} ordini attendono la tua conferma."})
+    low_conf = sum(1 for o in orders for i in o.get("line_items", []) if i.get("confidence", 1) < 0.6)
+    if low_conf:
+        notifications.append({"type": "warning", "text": f"{low_conf} articoli con bassa confidenza da controllare."})
+    if learned_week:
+        notifications.append({"type": "learning", "text": f"Ordia ha appreso {learned_week} regole dai tuoi ordini."})
+    repeat = [c for c in customers if c["orders"] >= 2][:1]
+    if repeat:
+        notifications.append({"type": "insight", "text": f"{repeat[0]['name']} è un cliente ricorrente ({repeat[0]['orders']} ordini)."})
+
+    return {
+        "today": {"total": len(todays), "auto": auto, "review": review_today},
+        "to_review": to_review,
+        "recent_activity": orders[:8],
+        "notifications": notifications,
+        "recent_customers": customers[:6],
+        "totals": {"orders": len(orders), "customers": len(customers)},
+    }
+
+@api.get("/search")
+async def global_search(q: str = "", user: dict = Depends(get_current_user)):
+    cid = user["company_id"]
+    ql = q.strip().lower()
+    if len(ql) < 1:
+        return {"orders": [], "products": [], "customers": []}
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    products = await db.products.find({"company_id": cid}, {"_id": 0}).to_list(2000)
+    o_hits = [{"id": o["id"], "customer_name": o.get("customer_name"), "status": o["status"],
+               "created_at": o["created_at"]}
+              for o in orders
+              if ql in (o.get("customer_name") or "").lower() or ql in o["id"].lower()
+              or ql in (o.get("external_id") or "").lower()][:6]
+    p_hits = [{"id": p["id"], "name": p["name"], "sku": p.get("sku"), "price": p.get("price")}
+              for p in products
+              if ql in p["name"].lower() or ql in (p.get("sku") or "").lower()
+              or any(ql in a.lower() for a in p.get("aliases", []))][:6]
+    customers = _aggregate_customers(orders)
+    c_hits = [c for c in customers if ql in c["name"].lower()][:6]
+    return {"orders": o_hits, "products": p_hits, "customers": c_hits}
+
+@api.get("/customers")
+async def list_customers(user: dict = Depends(get_current_user)):
+    orders = await db.orders.find({"company_id": user["company_id"]}, {"_id": 0}).to_list(500)
+    return _aggregate_customers(orders)
+
+@api.get("/customers/{name}")
+async def customer_detail(name: str, user: dict = Depends(get_current_user)):
+    orders = await db.orders.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    mine = [o for o in orders if (o.get("customer_name") or "Sconosciuto") == name]
+    if not mine:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    agg = _aggregate_customers(mine)[0]
+    insights = []
+    if agg["orders"] >= 2:
+        insights.append(f"Cliente ricorrente con {agg['orders']} ordini per €{agg['volume']:.2f} totali.")
+    if agg["favorite_products"]:
+        insights.append(f"Ordina spesso: {', '.join(agg['favorite_products'])}.")
+    insights.append("Suggerimento: proponi un riordino dei prodotti abituali.")
+    return {"customer": agg, "orders": mine, "insights": insights}
+
 # ---------------------------------------------------------------------------
 # Roles, company settings & team management
 # ---------------------------------------------------------------------------
