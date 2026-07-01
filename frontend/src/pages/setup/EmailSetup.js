@@ -45,6 +45,14 @@ export default function EmailSetup() {
     } catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
   };
 
+  const pollNow = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/integrations/email/poll");
+      toast.success(`${data.orders_created} nuovi ordini importati dalla posta`);
+    } catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
+  };
+
   if (!cfg) return null;
   const isForwarding = cfg.inbound_provider === "forwarding";
 
@@ -133,6 +141,11 @@ export default function EmailSetup() {
         <button data-testid="email-validate" onClick={validate} disabled={busy} className="rounded-md bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-60">
           {busy ? "Verifica…" : "Salva e verifica connessione"}
         </button>
+        {cfg.status === "connected" && !isForwarding && (
+          <button data-testid="email-poll" onClick={pollNow} disabled={busy} className="rounded-md border border-input bg-white px-5 py-2.5 text-sm font-medium hover:bg-secondary disabled:opacity-60">
+            Controlla ora la posta
+          </button>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,8 @@ import secrets
 import tempfile
 import smtplib
 import imaplib
+import email as email_lib
+from email.header import decode_header
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
@@ -441,6 +443,38 @@ async def run_extraction(source_text: Optional[str], image_b64: Optional[str], p
 # ---------------------------------------------------------------------------
 # Order endpoints
 # ---------------------------------------------------------------------------
+async def ingest_order(company_id: str, source_type: str, source_preview: str,
+                       source_text: Optional[str] = None, image_b64: Optional[str] = None,
+                       created_by: str = "system", external_id: Optional[str] = None,
+                       source_meta: Optional[dict] = None) -> Optional[dict]:
+    """Single entry point for the whole order pipeline used by every channel
+    (manual upload, email, WhatsApp, future plugins):
+    Input -> AI extraction -> Catalog match -> Learning loop -> draft order.
+    Returns the created order, or None if it was a duplicate (idempotent by external_id)."""
+    if external_id:
+        dup = await db.orders.find_one({"company_id": company_id, "external_id": external_id}, {"_id": 0})
+        if dup:
+            logger.info("Skipping duplicate order external_id=%s", external_id)
+            return None
+    products = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(2000)
+    learned = await get_learned_aliases(company_id)
+    extracted = await run_extraction(source_text, image_b64, products, learned)
+    review_count = sum(1 for i in extracted["line_items"] if i["needs_review"])
+    order = {
+        "id": str(uuid.uuid4()), "company_id": company_id, "created_by": created_by,
+        "source_type": source_type, "source_preview": (source_preview or "")[:5000],
+        "external_id": external_id, "source_meta": source_meta or {},
+        "customer_name": extracted["customer_name"], "delivery_date": extracted["delivery_date"],
+        "notes": extracted["notes"], "line_items": extracted["line_items"],
+        "status": "needs_review" if review_count else "ready",
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.orders.insert_one(dict(order))
+    order.pop("_id", None)
+    logger.info("Ingested order %s via %s (%d items, %d need review)",
+                order["id"], source_type, len(extracted["line_items"]), review_count)
+    return order
+
 @api.post("/orders/extract")
 async def extract_order(
     request: Request,
@@ -449,7 +483,6 @@ async def extract_order(
     file: Optional[UploadFile] = File(None),
 ):
     user = await get_current_user(request)
-    products = await db.products.find({"company_id": user["company_id"]}, {"_id": 0}).to_list(2000)
 
     source_text = None
     image_b64 = None
@@ -488,27 +521,9 @@ async def extract_order(
     else:
         raise HTTPException(status_code=400, detail="Invalid source_type")
 
-    learned = await get_learned_aliases(user["company_id"])
-    extracted = await run_extraction(source_text, image_b64, products, learned)
-
-    order_id = str(uuid.uuid4())
-    review_count = sum(1 for i in extracted["line_items"] if i["needs_review"])
-    order = {
-        "id": order_id,
-        "company_id": user["company_id"],
-        "created_by": user["id"],
-        "source_type": source_type,
-        "source_preview": source_preview[:5000],
-        "customer_name": extracted["customer_name"],
-        "delivery_date": extracted["delivery_date"],
-        "notes": extracted["notes"],
-        "line_items": extracted["line_items"],
-        "status": "needs_review" if review_count else "ready",
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    }
-    await db.orders.insert_one(dict(order))
-    order.pop("_id", None)
+    order = await ingest_order(
+        user["company_id"], source_type, source_preview,
+        source_text=source_text, image_b64=image_b64, created_by=user["id"])
     return order
 
 @api.get("/orders")
@@ -857,7 +872,22 @@ async def whatsapp_validate(account_id: str, user: dict = Depends(get_current_us
     await db.integrations.update_one({"id": account_id}, {"$set": {
         "status": "connected", "display_phone_number": result["phone"].get("display_phone_number"),
         "verified_name": result["phone"].get("verified_name"), "last_error": None, "last_checked": now_iso()}})
-    return {"status": "connected", "phone": result["phone"], "waba": result["waba"]}
+
+    # Automation: subscribe our app to the WABA so inbound messages hit our webhook.
+    def _subscribe():
+        try:
+            r = requests.post(
+                f"https://graph.facebook.com/{GRAPH_VERSION}/{acc['waba_id']}/subscribed_apps",
+                headers={"Authorization": f"Bearer {acc['access_token']}"}, timeout=15)
+            return r.status_code, r.text
+        except Exception as e:
+            return 0, str(e)
+    sub_code, sub_body = await asyncio.to_thread(_subscribe)
+    subscribed = 200 <= sub_code < 300
+    await db.integrations.update_one({"id": account_id}, {"$set": {
+        "webhook_subscribed": subscribed, "webhook_sub_error": None if subscribed else sub_body[:300]}})
+    return {"status": "connected", "phone": result["phone"], "waba": result["waba"],
+            "webhook_subscribed": subscribed}
 
 def _wa_error_hint(code: int, body: str) -> str:
     b = (body or "").lower()
@@ -914,37 +944,81 @@ async def whatsapp_webhook_verify(request: Request):
         return PlainTextResponse(challenge)
     raise HTTPException(status_code=403, detail="Verification failed")
 
+def _wa_download_media(media_id: str, token: str):
+    """Fetch a WhatsApp media file: resolve URL then download bytes. Returns (bytes, mime)."""
+    base = f"https://graph.facebook.com/{GRAPH_VERSION}"
+    headers = {"Authorization": f"Bearer {token}"}
+    r = requests.get(f"{base}/{media_id}", headers=headers, timeout=15)
+    r.raise_for_status()
+    info = r.json()
+    url, mime = info.get("url"), info.get("mime_type", "")
+    rf = requests.get(url, headers=headers, timeout=30)
+    rf.raise_for_status()
+    return rf.content, mime
+
+async def _wa_source_from_message(msg: dict, acc: dict):
+    """Turn a single inbound WhatsApp message into (source_text, image_b64, preview)."""
+    sender = msg.get("from")
+    mtype = msg.get("type")
+    if mtype == "text":
+        body = (msg.get("text") or {}).get("body", "")
+        return (body, None, f"[WhatsApp da {sender}]\n{body}") if body else (None, None, None)
+    if mtype in ("image", "document"):
+        media = msg.get(mtype, {})
+        media_id = media.get("id")
+        if not media_id:
+            return None, None, None
+        try:
+            content, mime = await asyncio.to_thread(_wa_download_media, media_id, acc["access_token"])
+        except Exception as e:
+            logger.warning("WhatsApp media download failed: %s", e)
+            return None, None, None
+        fname = (media.get("filename") or "").lower()
+        caption = media.get("caption", "")
+        if mtype == "image" or mime.startswith("image/"):
+            return None, base64.b64encode(content).decode("utf-8"), f"[WhatsApp immagine da {sender}] {caption}"
+        if fname.endswith((".csv", ".xlsx", ".xls")) or "spreadsheet" in mime or "excel" in mime or "csv" in mime:
+            try:
+                df = _read_tabular(content, fname or "f.xlsx")
+                return df.to_csv(index=False), None, f"[WhatsApp allegato {fname} da {sender}]"
+            except Exception as e:
+                logger.warning("WhatsApp tabular parse failed: %s", e); return None, None, None
+        if fname.endswith(".pdf") or "pdf" in mime:
+            txt = _extract_pdf_text(content)
+            if txt.strip():
+                return txt, None, f"[WhatsApp PDF {fname} da {sender}]"
+        return None, None, None
+    return None, None, None
+
 @api.post("/webhooks/whatsapp")
 async def whatsapp_webhook_receive(request: Request):
     payload = await request.json()
+    created = 0
     try:
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
-                meta = value.get("metadata", {})
-                pnid = meta.get("phone_number_id")
+                pnid = value.get("metadata", {}).get("phone_number_id")
                 acc = await db.integrations.find_one({"type": "whatsapp", "phone_number_id": pnid}, {"_id": 0})
                 if not acc:
                     continue
                 for msg in value.get("messages", []):
-                    text = (msg.get("text") or {}).get("body", "")
-                    if not text:
-                        continue
-                    products = await db.products.find({"company_id": acc["company_id"]}, {"_id": 0}).to_list(2000)
-                    learned = await get_learned_aliases(acc["company_id"])
-                    extracted = await run_extraction(text, None, products, learned)
-                    review = sum(1 for i in extracted["line_items"] if i["needs_review"])
-                    await db.orders.insert_one({
-                        "id": str(uuid.uuid4()), "company_id": acc["company_id"], "created_by": "whatsapp",
-                        "source_type": "whatsapp", "source_preview": f"[WhatsApp da {msg.get('from')}]\n{text}"[:5000],
-                        "customer_name": extracted["customer_name"], "delivery_date": extracted["delivery_date"],
-                        "notes": extracted["notes"], "line_items": extracted["line_items"],
-                        "status": "needs_review" if review else "ready",
-                        "created_at": now_iso(), "updated_at": now_iso(),
-                    })
+                    try:
+                        source_text, image_b64, preview = await _wa_source_from_message(msg, acc)
+                        if not source_text and not image_b64:
+                            continue
+                        order = await ingest_order(
+                            acc["company_id"], "whatsapp", preview,
+                            source_text=source_text, image_b64=image_b64, created_by="whatsapp",
+                            external_id=f"wa:{msg.get('id')}",
+                            source_meta={"from": msg.get("from"), "type": msg.get("type")})
+                        if order:
+                            created += 1
+                    except Exception as e:
+                        logger.warning("WhatsApp message processing error: %s", e)
     except Exception as e:
         logger.warning("WhatsApp webhook error: %s", e)
-    return {"status": "ok"}
+    return {"status": "ok", "orders_created": created}
 
 # ---- Email channel --------------------------------------------------------
 @api.get("/integrations/email")
@@ -1007,6 +1081,136 @@ async def email_validate(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail=f"Autenticazione email fallita: {e}. Usa una App Password se hai la verifica in due passaggi.")
     await db.integrations.update_one({"id": doc["id"]}, {"$set": {"status": "connected", "last_error": None, "last_checked": now_iso()}})
     return {"status": "connected", "checks": results}
+
+# ---- Real inbound email polling (IMAP) ------------------------------------
+def _decode_hdr(value: str) -> str:
+    if not value:
+        return ""
+    parts = decode_header(value)
+    out = ""
+    for txt, enc in parts:
+        out += txt.decode(enc or "utf-8", errors="ignore") if isinstance(txt, bytes) else txt
+    return out
+
+def _parse_email_sources(raw: bytes):
+    """Return (source_text, image_b64, subject, sender, message_id) from a raw RFC822 email."""
+    msg = email_lib.message_from_bytes(raw)
+    subject = _decode_hdr(msg.get("Subject", ""))
+    sender = _decode_hdr(msg.get("From", ""))
+    message_id = msg.get("Message-ID", "") or f"{sender}:{subject}"
+    body_text, attach_text, image_b64 = "", "", None
+    for part in msg.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        filename = part.get_filename()
+        ctype = part.get_content_type()
+        if filename:
+            fname = _decode_hdr(filename).lower()
+            try:
+                content = part.get_payload(decode=True) or b""
+            except Exception:
+                continue
+            if fname.endswith((".csv", ".xlsx", ".xls")):
+                try:
+                    attach_text += "\n" + _read_tabular(content, fname).to_csv(index=False)
+                except Exception as e:
+                    logger.warning("email tabular parse failed: %s", e)
+            elif fname.endswith(".pdf"):
+                try:
+                    attach_text += "\n" + _extract_pdf_text(content)
+                except Exception as e:
+                    logger.warning("email pdf parse failed: %s", e)
+            elif fname.endswith((".png", ".jpg", ".jpeg", ".webp")) and not image_b64:
+                image_b64 = base64.b64encode(content).decode("utf-8")
+        elif ctype == "text/plain":
+            try:
+                body_text += (part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", errors="ignore")
+            except Exception:
+                pass
+    source_text = (body_text + "\n" + attach_text).strip()
+    return (source_text or None), (None if source_text else image_b64), subject, sender, message_id
+
+async def poll_email_account(doc: dict, limit: int = 20) -> int:
+    """Fetch UNSEEN emails for one connected account and ingest them as orders. Idempotent."""
+    provider = doc.get("inbound_provider")
+    if provider in (None, "forwarding"):
+        return 0
+    host = doc.get("inbound_host") or IMAP_HOSTS.get(provider)
+    if not (host and doc.get("inbound_email") and doc.get("inbound_password")):
+        return 0
+
+    def _fetch():
+        out = []
+        m = imaplib.IMAP4_SSL(host, 993)
+        try:
+            m.login(doc["inbound_email"], doc["inbound_password"])
+            m.select("INBOX")
+            typ, data = m.search(None, "UNSEEN")
+            if typ != "OK":
+                return out
+            ids = data[0].split()[:limit]
+            for i in ids:
+                typ, msg_data = m.fetch(i, "(RFC822)")
+                if typ == "OK" and msg_data and msg_data[0]:
+                    out.append(msg_data[0][1])
+                    m.store(i, "+FLAGS", "\\Seen")
+        finally:
+            try:
+                m.logout()
+            except Exception:
+                pass
+        return out
+
+    try:
+        raws = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=45)
+    except Exception as e:
+        logger.warning("IMAP poll failed for company=%s: %s", doc.get("company_id"), e)
+        await db.integrations.update_one({"id": doc["id"]}, {"$set": {"last_error": str(e)[:300], "last_checked": now_iso()}})
+        return 0
+
+    created = 0
+    for raw in raws:
+        try:
+            source_text, image_b64, subject, sender, mid = _parse_email_sources(raw)
+            if not source_text and not image_b64:
+                continue
+            preview = f"[Email da {sender}] {subject}\n{(source_text or '')[:1500]}"
+            order = await ingest_order(
+                doc["company_id"], "email", preview, source_text=source_text, image_b64=image_b64,
+                created_by="email", external_id=f"mail:{mid}",
+                source_meta={"from": sender, "subject": subject})
+            if order:
+                created += 1
+        except Exception as e:
+            logger.warning("email ingest error: %s", e)
+    await db.integrations.update_one({"id": doc["id"]}, {"$set": {"last_checked": now_iso(), "last_error": None}})
+    if created:
+        logger.info("Email poll ingested %d orders for company=%s", created, doc.get("company_id"))
+    return created
+
+@api.post("/integrations/email/poll")
+async def email_poll_now(user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    doc = await _get_integration(user["company_id"], "email")
+    if not doc or doc.get("status") != "connected":
+        raise HTTPException(status_code=400, detail="Connetti e verifica prima la casella email.")
+    created = await poll_email_account(doc)
+    return {"status": "ok", "orders_created": created}
+
+async def email_poll_loop():
+    """Background loop that polls all connected IMAP mailboxes on an interval."""
+    interval = int(os.environ.get("EMAIL_POLL_INTERVAL", "120"))
+    await asyncio.sleep(15)  # let startup settle
+    while True:
+        try:
+            accounts = await db.integrations.find(
+                {"type": "email", "status": "connected"}, {"_id": 0}).to_list(1000)
+            for acc in accounts:
+                if acc.get("inbound_provider") not in (None, "forwarding"):
+                    await poll_email_account(acc)
+        except Exception as e:
+            logger.warning("email_poll_loop cycle error: %s", e)
+        await asyncio.sleep(interval)
 
 # ---- ERP export layer (provider-based, ERP-agnostic) ----------------------
 def standardize_order(order: dict, company: dict) -> dict:
@@ -1272,10 +1476,12 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.products.create_index("company_id")
     await db.orders.create_index("company_id")
+    await db.orders.create_index([("company_id", 1), ("external_id", 1)])
     await db.login_attempts.create_index("identifier")
     await db.integrations.create_index([("company_id", 1), ("type", 1)])
     await db.learned_aliases.create_index([("company_id", 1), ("phrase", 1)], unique=True)
     await seed_demo_workspace()
+    asyncio.create_task(email_poll_loop())
     logger.info("Ordia API ready.")
 
 @app.on_event("shutdown")
