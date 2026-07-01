@@ -33,7 +33,7 @@ export function AppShell({ children }) {
       {/* Sidebar */}
       <aside className="hidden md:flex w-[240px] shrink-0 flex-col border-r border-border bg-white">
         <div className="flex items-center gap-2 px-6 h-16 border-b border-border">
-          <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/f48a6da9e542afeb70dc61c881f950dab8093983969418d5f0951a43da9ae302.png" alt="Ordia" className="h-7 w-7 rounded-md object-contain" />
+          <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/53e400df112bf8342c44b820c9a12de25bc1fc5aae7b0c17c68d6fd4dfa8131a.png" alt="Ordia" className="h-7 w-7 rounded-md object-contain" />
           <span className="font-display font-bold text-lg tracking-[0.18em]">ORDIA</span>
           {pilotMode && (
             <span data-testid="pilot-badge" className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
@@ -100,7 +100,7 @@ export function AppShell({ children }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border bg-white">
           <div className="flex items-center gap-2">
-            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/f48a6da9e542afeb70dc61c881f950dab8093983969418d5f0951a43da9ae302.png" alt="Ordia" className="h-6 w-6 rounded object-contain" />
+            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/53e400df112bf8342c44b820c9a12de25bc1fc5aae7b0c17c68d6fd4dfa8131a.png" alt="Ordia" className="h-6 w-6 rounded object-contain" />
             <span className="font-display font-bold tracking-[0.18em]">ORDIA</span>
           </div>
           <button data-testid="new-order-cta-mobile" onClick={() => navigate("/app/new")} className="rounded-md bg-primary text-primary-foreground p-2">
