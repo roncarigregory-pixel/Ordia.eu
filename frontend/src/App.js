@@ -16,6 +16,7 @@ import EmailSetup from "@/pages/setup/EmailSetup";
 import ErpSetup from "@/pages/setup/ErpSetup";
 import TeamSetup from "@/pages/setup/TeamSetup";
 import CompanySetup from "@/pages/setup/CompanySetup";
+import LearningSetup from "@/pages/setup/LearningSetup";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -26,10 +27,8 @@ function Protected({ children }) {
 
 function PublicOnly({ children }) {
   const { user, ready, pilotMode } = useAuth();
-  if (!ready) return <div className="min-h-screen bg-background" />;
-  // In pilot mode the login/register pages stay reachable for preview even
-  // when the demo session is active; only redirect in production auth mode.
-  if (user && !pilotMode) return <Navigate to="/app" replace />;
+  // Public pages render immediately; redirect only once we KNOW a prod user is logged in.
+  if (ready && user && !pilotMode) return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -53,6 +52,7 @@ function App() {
           <Route path="/app/setup/erp" element={<Protected><ErpSetup /></Protected>} />
           <Route path="/app/setup/team" element={<Protected><TeamSetup /></Protected>} />
           <Route path="/app/setup/company" element={<Protected><CompanySetup /></Protected>} />
+          <Route path="/app/setup/learning" element={<Protected><LearningSetup /></Protected>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>

@@ -59,6 +59,11 @@ Core workflow: Receive → Understand → Extract → Validate → Learn → Exp
 - Tested: iteration_3 → 21/21 backend, full frontend E2E, all pass (1 minor ERP-save bug fixed).
 
 ## Next Tasks
-- Implement the learning loop (P0).
-- Wire real inbound email polling + WhatsApp webhook subscription automation.
+- Milestone 2: real inbound email polling (IMAP fetch + attachment parsing) + WhatsApp webhook subscription automation.
+- Milestone 3: dedicated ERP connector foundations (registry + mappers) on voxera.order.v1.
+- Milestone 4: outbound notifications (order confirmations + low-confidence clarification requests).
 - Turn off pilot mode (REACT_APP_PILOT_MODE=false) for real customer onboarding.
+
+## Implemented — Brand + Milestone 1 (2026-07-01)
+- Rebrand to **Voxera**: evolved navy "V" logo mark, uppercase VOXERA wordmark (Satoshi), midnight-blue (#0B1E3B) + white theme, favicon. Demo login stays demo@ordia.app/demo123.
+- Milestone 1 — Learning Loop (P0): every validated order teaches Voxera. Confirmed line phrases persist as company-scoped learned aliases (`learned_aliases`), merged into the extraction catalog context AND applied as deterministic high-confidence overrides so the AI never repeats a matching mistake. New "Apprendimento" page (/app/setup/learning) to view/remove rules. Verified end-to-end via curl (unknown phrase → corrected → auto-matched at 0.97+ next time).

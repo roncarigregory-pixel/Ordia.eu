@@ -33,10 +33,8 @@ export function AppShell({ children }) {
       {/* Sidebar */}
       <aside className="hidden md:flex w-[240px] shrink-0 flex-col border-r border-border bg-white">
         <div className="flex items-center gap-2 px-6 h-16 border-b border-border">
-          <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-display font-black text-sm">O</span>
-          </div>
-          <span className="font-display font-bold text-lg tracking-tight">Ordia</span>
+          <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/83180b875dd7d960f1e8b0c3e9c25882592c405a6735c59d22741323d2c5bb10.png" alt="Voxera" className="h-7 w-7 rounded-md object-contain" />
+          <span className="font-display font-bold text-lg tracking-[0.18em]">VOXERA</span>
           {pilotMode && (
             <span data-testid="pilot-badge" className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
               Demo
@@ -102,10 +100,8 @@ export function AppShell({ children }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border bg-white">
           <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-display font-black text-xs">O</span>
-            </div>
-            <span className="font-display font-bold">Ordia</span>
+            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/83180b875dd7d960f1e8b0c3e9c25882592c405a6735c59d22741323d2c5bb10.png" alt="Voxera" className="h-6 w-6 rounded object-contain" />
+            <span className="font-display font-bold tracking-[0.18em]">VOXERA</span>
           </div>
           <button data-testid="new-order-cta-mobile" onClick={() => navigate("/app/new")} className="rounded-md bg-primary text-primary-foreground p-2">
             <Plus size={18} weight="bold" />

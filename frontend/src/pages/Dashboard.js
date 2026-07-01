@@ -67,7 +67,7 @@ export default function Dashboard() {
           <div className="p-12 text-center">
             <img src="https://images.pexels.com/photos/36123565/pexels-photo-36123565.jpeg" alt="Vuoto" className="mx-auto h-40 w-full max-w-md object-cover rounded-md opacity-90" />
             <p className="mt-5 font-display text-lg font-bold">Nessun ordine in attesa</p>
-            <p className="text-sm text-muted-foreground mt-1">Incolla il tuo primo ordine e lascia che Ordia faccia il lavoro.</p>
+            <p className="text-sm text-muted-foreground mt-1">Incolla il tuo primo ordine e lascia che Voxera faccia il lavoro.</p>
             <button data-testid="empty-new-order" onClick={() => navigate("/app/new")} className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90">
               <Plus size={16} weight="bold" /> Nuovo Ordine
             </button>

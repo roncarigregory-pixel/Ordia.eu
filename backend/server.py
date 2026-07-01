@@ -488,7 +488,8 @@ async def extract_order(
     else:
         raise HTTPException(status_code=400, detail="Invalid source_type")
 
-    extracted = await run_extraction(source_text, image_b64, products)
+    learned = await get_learned_aliases(user["company_id"])
+    extracted = await run_extraction(source_text, image_b64, products, learned)
 
     order_id = str(uuid.uuid4())
     review_count = sum(1 for i in extracted["line_items"] if i["needs_review"])
@@ -543,7 +544,19 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
     await db.orders.update_one(
         {"id": order_id}, {"$set": {"status": "validated", "updated_at": now_iso()}})
     order["status"] = "validated"
+    await learn_from_order(user["company_id"], order)  # every confirmed line teaches Voxera
     return order
+
+@api.get("/learning")
+async def list_learning(user: dict = Depends(get_current_user)):
+    items = await db.learned_aliases.find(
+        {"company_id": user["company_id"]}, {"_id": 0}).sort("count", -1).to_list(2000)
+    return items
+
+@api.delete("/learning/{alias_id}")
+async def delete_learning(alias_id: str, user: dict = Depends(get_current_user)):
+    await db.learned_aliases.delete_one({"id": alias_id, "company_id": user["company_id"]})
+    return {"ok": True}
 
 @api.delete("/orders/{order_id}")
 async def delete_order(order_id: str, user: dict = Depends(get_current_user)):
@@ -716,7 +729,7 @@ class WhatsAppConnect(BaseModel):
 
 class WhatsAppTest(BaseModel):
     to: str
-    text: str = "Ciao! Questo è un messaggio di prova da Ordia. La connessione WhatsApp funziona. ✅"
+    text: str = "Ciao! Questo è un messaggio di prova da Voxera. La connessione WhatsApp funziona. ✅"
 
 class EmailConnect(BaseModel):
     inbound_provider: Optional[str] = None  # gmail | m365 | imap | forwarding
@@ -918,7 +931,8 @@ async def whatsapp_webhook_receive(request: Request):
                     if not text:
                         continue
                     products = await db.products.find({"company_id": acc["company_id"]}, {"_id": 0}).to_list(2000)
-                    extracted = await run_extraction(text, None, products)
+                    learned = await get_learned_aliases(acc["company_id"])
+                    extracted = await run_extraction(text, None, products, learned)
                     review = sum(1 for i in extracted["line_items"] if i["needs_review"])
                     await db.orders.insert_one({
                         "id": str(uuid.uuid4()), "company_id": acc["company_id"], "created_by": "whatsapp",
@@ -936,7 +950,7 @@ async def whatsapp_webhook_receive(request: Request):
 @api.get("/integrations/email")
 async def email_get(user: dict = Depends(get_current_user)):
     doc = await _get_integration(user["company_id"], "email")
-    forwarding = f"orders-{user['company_id'][:8]}@inbound.ordia.app"
+    forwarding = f"orders-{user['company_id'][:8]}@inbound.voxera.com"
     if not doc:
         return {"status": "not_configured", "forwarding_address": forwarding}
     doc.pop("inbound_password", None)
@@ -998,7 +1012,7 @@ async def email_validate(user: dict = Depends(get_current_user)):
 def standardize_order(order: dict, company: dict) -> dict:
     """Canonical internal export format — the single contract every ERP connector consumes."""
     return {
-        "schema": "ordia.order.v1",
+        "schema": "voxera.order.v1",
         "order_id": order["id"],
         "company": {"id": company.get("id"), "name": company.get("name"), "vat": company.get("vat")},
         "customer": {"name": order.get("customer_name")},
@@ -1260,6 +1274,7 @@ async def startup():
     await db.orders.create_index("company_id")
     await db.login_attempts.create_index("identifier")
     await db.integrations.create_index([("company_id", 1), ("type", 1)])
+    await db.learned_aliases.create_index([("company_id", 1), ("phrase", 1)], unique=True)
     await seed_demo_workspace()
     logger.info("Ordia API ready.")
 

@@ -7,7 +7,7 @@ import { EnvelopeSimple, Copy, Info } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 const PROVIDERS = [
-  { key: "forwarding", label: "Indirizzo di inoltro Ordia" },
+  { key: "forwarding", label: "Indirizzo di inoltro Voxera" },
   { key: "gmail", label: "Gmail / Google Workspace" },
   { key: "m365", label: "Microsoft 365 / Outlook" },
   { key: "imap", label: "Altro (IMAP)" },
@@ -85,7 +85,7 @@ export default function EmailSetup() {
                 <Info size={18} className="text-blue-600 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm text-blue-900 font-medium">Inoltra i tuoi ordini a questo indirizzo</p>
-                  <p className="text-xs text-blue-700 mt-1">Ordia leggerà corpo e allegati (PDF, Excel, CSV, immagini) e creerà l'ordine automaticamente.</p>
+                  <p className="text-xs text-blue-700 mt-1">Voxera leggerà corpo e allegati (PDF, Excel, CSV, immagini) e creerà l'ordine automaticamente.</p>
                   <div className="mt-3 flex items-center gap-2">
                     <code data-testid="forwarding-address" className="flex-1 rounded border border-blue-200 bg-white px-3 py-2 text-sm font-mono">{cfg.forwarding_address}</code>
                     <button onClick={() => { navigator.clipboard.writeText(cfg.forwarding_address); toast.success("Copiato"); }} className="rounded-md border border-blue-200 bg-white p-2 hover:bg-blue-100"><Copy size={16} /></button>

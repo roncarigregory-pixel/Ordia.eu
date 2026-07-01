@@ -74,7 +74,7 @@ export default function NewOrder() {
       <div className="max-w-xl mx-auto py-16 animate-fade-up">
         <div className="flex items-center gap-2 mb-8">
           <Sparkle size={22} weight="fill" className="text-slate-900" />
-          <h1 className="font-display text-2xl font-black tracking-tight">Ordia sta leggendo il tuo ordine…</h1>
+          <h1 className="font-display text-2xl font-black tracking-tight">Voxera sta leggendo il tuo ordine…</h1>
         </div>
         <div className="space-y-3">
           {STAGES.map((s, i) => (

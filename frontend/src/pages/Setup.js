@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  WhatsappLogo, EnvelopeSimple, Package, Plugs, UsersThree, Buildings,
+  WhatsappLogo, EnvelopeSimple, Package, Plugs, UsersThree, Buildings, Brain,
   CheckCircle, CaretRight, Circle,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ const CARDS = [
   { key: "email", to: "/app/setup/email", icon: EnvelopeSimple, title: "Email", desc: "Casella dedicata o la tua email aziendale." },
   { key: "erp", to: "/app/setup/erp", icon: Plugs, title: "Export ERP", desc: "Webhook, REST, JSON, CSV, XML — ERP-agnostico." },
   { key: "team", to: "/app/setup/team", icon: UsersThree, title: "Team", desc: "Invita colleghi e assegna i ruoli." },
+  { key: "learning", to: "/app/setup/learning", icon: Brain, title: "Apprendimento", desc: "Le correzioni diventano regole permanenti." },
 ];
 
 export default function Setup() {

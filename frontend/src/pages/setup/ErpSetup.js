@@ -69,7 +69,7 @@ export default function ErpSetup() {
             </select>
           </Field>
         </div>
-        <Field label="URL endpoint" hint="Dove Ordia invierà gli ordini approvati." testid="erp-url">
+        <Field label="URL endpoint" hint="Dove Voxera invierà gli ordini approvati." testid="erp-url">
           <input value={cfg.endpoint_url} onChange={set("endpoint_url")} placeholder="https://erp.tuaazienda.com/api/orders" className={inputCls} />
         </Field>
         <div className="grid sm:grid-cols-2 gap-4">
@@ -97,7 +97,7 @@ export default function ErpSetup() {
           ))}
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Ogni connettore è un modulo indipendente sopra lo stesso formato standard <code className="font-mono">ordia.order.v1</code>, così se ne aggiungono di nuovi senza toccare il resto del prodotto.
+          Ogni connettore è un modulo indipendente sopra lo stesso formato standard <code className="font-mono">voxera.order.v1</code>, così se ne aggiungono di nuovi senza toccare il resto del prodotto.
         </p>
       </div>
     </div>
