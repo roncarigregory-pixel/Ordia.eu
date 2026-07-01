@@ -33,7 +33,7 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-sm animate-fade-up">
           <div className="flex items-center gap-2 mb-10">
-            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/53e400df112bf8342c44b820c9a12de25bc1fc5aae7b0c17c68d6fd4dfa8131a.png" alt="Ordia" className="h-8 w-8 rounded-md object-contain" />
+            <img src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/c2366cbc5b415553f0e7a15df85e794d75397480b11ddc13c97ae35d53d7c3be.png" alt="Ordia" className="h-8 w-8 rounded-md object-contain" />
             <span className="font-display font-bold text-xl tracking-[0.18em]">ORDIA</span>
           </div>
 
