@@ -15,6 +15,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import io
+import re
 import json
 import uuid
 import base64
@@ -284,15 +285,50 @@ async def transcribe_audio(content: bytes, filename: str) -> str:
     return (response.text or "").strip()
 
 # ---------------------------------------------------------------------------
-# AI extraction pipeline
+# AI extraction pipeline + Learning loop
 # ---------------------------------------------------------------------------
-def _build_catalog_context(products: List[dict]) -> str:
+_UNIT_WORDS = {
+    "case", "cases", "box", "boxes", "bag", "bags", "sack", "sacks", "tray", "trays",
+    "kg", "g", "gr", "lt", "l", "ml", "pack", "packs", "ct", "unit", "units",
+    "cassa", "casse", "scatola", "scatole", "sacco", "sacchi", "vassoio", "vassoi",
+    "cartone", "cartoni", "confezione", "confezioni", "pz", "pezzi", "pezzo", "unita", "unità", "x", "di", "da", "of",
+}
+
+def normalize_phrase(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[^a-zàèéìòùáéíóú0-9\s]", " ", t)
+    tokens = [w for w in t.split() if not w.isdigit() and w not in _UNIT_WORDS]
+    return " ".join(tokens).strip()
+
+async def get_learned_aliases(company_id: str) -> List[dict]:
+    return await db.learned_aliases.find({"company_id": company_id}, {"_id": 0}).to_list(5000)
+
+async def learn_from_order(company_id: str, order: dict):
+    """Every confirmed line becomes a persistent phrase→product mapping so the
+    AI never repeats the same matching mistake for this company."""
+    customer = order.get("customer_name")
+    for it in order.get("line_items", []):
+        pid = it.get("matched_product_id")
+        phrase = normalize_phrase(it.get("raw_text", ""))
+        if not pid or not phrase or len(phrase) < 2:
+            continue
+        await db.learned_aliases.update_one(
+            {"company_id": company_id, "phrase": phrase},
+            {"$set": {"product_id": pid, "sku": it.get("matched_sku"), "name": it.get("matched_name"),
+                      "customer_name": customer, "updated_at": now_iso()},
+             "$inc": {"count": 1},
+             "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now_iso()}},
+            upsert=True,
+        )
+
+def _build_catalog_context(products: List[dict], learned_by_pid: dict = None) -> str:
+    learned_by_pid = learned_by_pid or {}
     lines = []
     for p in products:
-        aliases = ", ".join(p.get("aliases", []))
+        aliases = list(p.get("aliases", [])) + learned_by_pid.get(p["id"], [])
         lines.append(
             f"- id={p['id']} | sku={p.get('sku','')} | name={p['name']} | unit={p.get('unit','')} "
-            f"| pack={p.get('pack_size','')} | price={p.get('price',0)} | aliases=[{aliases}]"
+            f"| pack={p.get('pack_size','')} | price={p.get('price',0)} | aliases=[{', '.join(aliases)}]"
         )
     return "\n".join(lines)
 
@@ -302,6 +338,7 @@ and convert them into clean structured order data.
 
 You understand abbreviations, spelling mistakes, multilingual text, packaging conversions and aliases.
 Match every requested item to the company product catalog provided. Use the catalog `id` for matches.
+The catalog aliases include phrases previously confirmed by human operators — treat them as strong signals.
 
 Return ONLY valid JSON (no markdown, no commentary) with this exact shape:
 {
@@ -328,8 +365,18 @@ Rules:
 - Never invent items not present in the source text.
 """
 
-async def run_extraction(source_text: Optional[str], image_b64: Optional[str], products: List[dict]) -> dict:
-    catalog = _build_catalog_context(products)
+async def run_extraction(source_text: Optional[str], image_b64: Optional[str], products: List[dict],
+                         learned: List[dict] = None) -> dict:
+    learned = learned or []
+    products_by_id = {p["id"]: p for p in products}
+    learned_by_pid = {}
+    phrase_to_pid = {}
+    for la in learned:
+        if la.get("product_id") in products_by_id:
+            learned_by_pid.setdefault(la["product_id"], []).append(la["phrase"])
+            phrase_to_pid[la["phrase"]] = la["product_id"]
+
+    catalog = _build_catalog_context(products, learned_by_pid)
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=f"extract-{uuid.uuid4()}",
@@ -358,12 +405,13 @@ async def run_extraction(source_text: Optional[str], image_b64: Optional[str], p
         start, end = text.find("{"), text.rfind("}")
         data = json.loads(text[start:end + 1]) if start != -1 and end != -1 else {"line_items": []}
 
-    # normalize line items
+    # normalize line items + apply learned deterministic overrides
     items = []
     for it in data.get("line_items", []):
-        items.append({
+        raw = str(it.get("raw_text", ""))
+        item = {
             "id": str(uuid.uuid4()),
-            "raw_text": str(it.get("raw_text", "")),
+            "raw_text": raw,
             "quantity": float(it.get("quantity") or 1),
             "unit": str(it.get("unit") or "unit"),
             "matched_product_id": it.get("matched_product_id"),
@@ -372,7 +420,17 @@ async def run_extraction(source_text: Optional[str], image_b64: Optional[str], p
             "price": float(it.get("price") or 0),
             "confidence": float(it.get("confidence") or 0),
             "needs_review": bool(it.get("needs_review", True)),
-        })
+            "learned": False,
+        }
+        np = normalize_phrase(raw)
+        if np in phrase_to_pid:
+            p = products_by_id[phrase_to_pid[np]]
+            item.update({
+                "matched_product_id": p["id"], "matched_sku": p.get("sku"), "matched_name": p["name"],
+                "price": p.get("price", 0), "unit": p.get("unit", item["unit"]),
+                "confidence": max(item["confidence"], 0.99), "needs_review": False, "learned": True,
+            })
+        items.append(item)
     return {
         "customer_name": data.get("customer_name"),
         "delivery_date": data.get("delivery_date"),
