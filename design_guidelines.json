@@ -1,118 +1,109 @@
 {
-  "theme_and_archetype": {
-    "domain": "Enterprise SaaS / Logistics / Order Automation",
-    "theme": "light",
-    "archetype": "Archetype 4 (Swiss & High-Contrast)",
-    "reasoning": "Targeting back-office operators and wholesalers who need maximum clarity and speed. Data density is prioritized over decorative whitespace. Color is strictly functional (status only), and the interface feels like an invisible, high-performance command center (Linear/Vercel benchmark)."
-  },
-  "typography": {
-    "fonts": {
-      "headings": "Satoshi",
-      "body": "Geist",
-      "mono": "Geist Mono"
-    },
-    "hierarchy": {
-      "h1": "text-4xl font-black tracking-tighter leading-none",
-      "h2": "text-2xl font-bold tracking-tight leading-tight",
-      "h3": "text-lg font-semibold tracking-tight",
-      "body": "text-sm font-normal leading-relaxed text-slate-700",
-      "data_labels": "text-xs font-medium uppercase tracking-[0.2em] text-slate-500",
-      "mono_data": "font-mono text-sm tracking-tight text-slate-800"
-    },
-    "rules": [
-      "Never use Inter for headings.",
-      "Use Geist Mono for Order IDs, SKU codes, and Confidence percentages.",
-      "Aggressively round large numbers (e.g., 1.2K instead of 1,234)."
-    ]
-  },
-  "color_palette": {
-    "background": {
-      "app": "bg-slate-50",
-      "surface": "bg-white",
-      "glass": "bg-white/70 backdrop-blur-xl backdrop-saturate-150"
-    },
-    "text": {
-      "primary": "text-slate-950",
-      "secondary": "text-slate-600",
-      "tertiary": "text-slate-400"
-    },
-    "borders": {
-      "default": "border-slate-200",
-      "focus": "ring-2 ring-slate-900 ring-offset-2"
-    },
-    "actions": {
-      "primary": "bg-slate-900 text-white hover:bg-slate-800",
-      "secondary": "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50"
-    },
-    "status": {
-      "success": "text-emerald-700 bg-emerald-50 border border-emerald-200",
-      "warning": "text-amber-700 bg-amber-50 border border-amber-200",
-      "error": "text-red-700 bg-red-50 border border-red-200",
-      "info": "text-blue-700 bg-blue-50 border border-blue-200"
+  "theme": "LIGHT",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "brand": {
+    "name": "Ordia",
+    "logo_description": "Bold single-stroke open 'O' cycle-loop mark (navy tile, white mark). Wordmark 'ORDIA' uppercase.",
+    "colors": {
+      "primary": "#0B1E3B",
+      "primary_foreground": "#FFFFFF",
+      "background": "#FFFFFF",
+      "surface": "#F9FAFB",
+      "surface_hover": "#F3F4F6",
+      "border": "#E5E7EB",
+      "border_hover": "#D1D5DB",
+      "text_primary": "#111827",
+      "text_secondary": "#4B5563",
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "ai_accent": "#6366F1"
     }
   },
-  "spacing_and_layout": {
-    "strategy": "The 'Control Room' Grid Protocol",
-    "navigation": "240px persistent left sidebar. Collapses to 64px icon rail on small screens.",
-    "page_structure": {
-      "max_width": "max-w-[1600px] mx-auto w-full",
-      "padding": "p-6 md:p-8"
+  "typography": {
+    "headings": {
+      "font": "Satoshi",
+      "weight": "font-bold",
+      "tracking": "tracking-tight",
+      "usage": "Use for all H1, H2, H3, H4 and wordmark"
     },
-    "dashboard_grid": {
-      "kpi_strip": "grid grid-cols-1 md:grid-cols-4 gap-4 mb-8",
-      "content": "grid grid-cols-1 lg:grid-cols-12 gap-6",
-      "main_chart": "col-span-8",
-      "side_feed": "col-span-4"
+    "body": {
+      "font": "Manrope",
+      "weight": "font-normal",
+      "tracking": "tracking-normal",
+      "usage": "Use for all paragraphs, labels, and standard text"
     },
-    "density": "3:1 density ratio. High-value zones (data tables, line items) use tight gutters (gap-2 to gap-4) and smaller text (text-sm)."
+    "mono": {
+      "font": "JetBrains Mono",
+      "usage": "Use for SKUs, Order IDs, Code, and tabular data where alignment matters"
+    }
+  },
+  "layout": {
+    "spacing": "Lots of whitespace. Use p-8 or p-12 for page wrappers. Maintain airy, premium feel.",
+    "sidebar": "Minimal icon sidebar with badges. Fixed left. Global Cmd+K always available.",
+    "order_review": "Two columns (50/50 or 40/60): Left = original document PDF/email/image (sticky), Right = editable AI-extracted table with suggestions/warnings.",
+    "home": "'AI Command Center' layout: Hero natural-language summary first, then orders-to-review, latest activity, AI notifications, recent customers."
   },
   "components": {
-    "strategy": "Shadcn heavily customized for a flat, technical look.",
-    "customizations": {
-      "radius": "rounded-md (max 6px radius globally). No pill shapes unless it's a status badge.",
-      "shadows": "REMOVE ALL DROP SHADOWS. Rely entirely on 1px borders (border-slate-200) to separate elements.",
-      "cards": "Flat background (bg-white), 1px subtle border, no shadow. Hover state: border darkens to border-slate-300.",
-      "tables": "Dense rows (py-2), sticky headers, visual status indicators in the first column. Row grouping for large orders.",
-      "modals": "Use Glassmorphism (Crystal/Apple variant) for modal overlays (bg-slate-900/40 backdrop-blur-sm) and crisp white dialog boxes."
-    },
-    "ai_extraction_workflow": "Visualize extraction as a step-card pipeline (Source -> Parsing -> Validation -> Ready). Use skeleton loaders for 'Parsing' state."
+    "buttons": "Midnight-blue primary buttons (#0B1E3B). Modern, slightly rounded (rounded-md), smooth hover states.",
+    "cards": "Subtle 1px border (border-border/40), very light shadow-sm. No heavy gradients or dark shadows. Keep it clean.",
+    "inputs": "Shadcn default with customized subtle borders. Focus state should use a subtle ring of the primary color.",
+    "badges": "Rounded-full, soft backgrounds (e.g., bg-gray-100 text-gray-800) or brand-tinted.",
+    "tables": "High data density for order rows. Clean borders. Must support inline editing, row duplication, drag-and-drop.",
+    "ai_elements": "Subtle visual treatment for AI. Use sparkles icon or a subtle indigo tint for AI confidence scores, suggestions, and auto-mapped fields."
   },
-  "motion": {
-    "principles": [
-      "No spinners. Use skeleton screens for smoother perceived performance.",
-      "Fast, snappy transitions (duration-150 ease-out).",
-      "Hover states must instantly elevate border contrast or background tint."
-    ]
+  "animations": {
+    "general": "Micro-animations on hover/loading/success/error/skeleton. Smooth but never slow.",
+    "loading": "Skeletons with subtle pulse. No harsh flashing.",
+    "transitions": "Use Framer Motion for elegant page transitions (opacity 0 to 1, y 5 to 0).",
+    "ai_import": "Elegant progression steps: Upload -> AI analysis -> customer recognition -> catalog matching -> confidence -> order ready."
   },
-  "icons": {
-    "library": "@phosphor-icons/react",
-    "usage": "Use Duotone or Regular weights. Keep consistent 20px size for nav, 16px for inline data."
-  },
-  "media": {
-    "images": [
+  "icons": "lucide-react",
+  "language": "ITALIAN",
+  "image_urls": {
+    "customer_avatars": [
       {
-        "url": "https://images.pexels.com/photos/36123565/pexels-photo-36123565.jpeg",
-        "category": "empty_state",
-        "description": "Minimalist desk setup, use as an illustration for 'Inbox Zero' / 'No Pending Orders'."
+        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4Mjg5MDExM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Male professional headshot",
+        "category": "avatar"
       },
       {
-        "url": "https://images.pexels.com/photos/4481327/pexels-photo-4481327.jpeg",
-        "category": "auth_background",
-        "description": "Warehouse interior. Use heavily overlaid (bg-slate-900/80) on the login/register screen side panel."
+        "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4Mjg5MDExM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Female professional headshot",
+        "category": "avatar"
+      }
+    ],
+    "documents": [
+      {
+        "url": "https://images.unsplash.com/photo-1568847811512-803314424fdc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwzfHxidXNpbmVzcyUyMGRvY3VtZW50JTIwcGFwZXIlMjBjbGlwYm9hcmR8ZW58MHx8fHwxNzgyOTM5NjA4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Paper document on clipboard",
+        "category": "document"
+      }
+    ],
+    "products": [
+      {
+        "url": "https://images.unsplash.com/photo-1595246007497-15e0ed4b8d96?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwcHJvZHVjdCUyMHBhY2thZ2luZ3xlbnwwfHx8fDE3ODI5Mzk2MDh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Brown cardboard box on white table",
+        "category": "product"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1570658847330-708619301f21?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwcHJvZHVjdCUyMHBhY2thZ2luZ3xlbnwwfHx8fDE3ODI5Mzk2MDh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "White labeled glass vial",
+        "category": "product"
       }
     ]
   },
-  "accessibility_and_testing": {
-    "contrast": "Ensure all text meets APCA standards. Status colors must be legible against their light backgrounds.",
-    "testing": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case, role-based format (e.g., data-testid='order-validate-button')."
-  },
   "instructions_to_main_agent": [
-    "Install required dependencies: yarn add @phosphor-icons/react framer-motion clsx tailwind-merge.",
-    "Since we are using .js/.jsx, ensure all components and page structures reflect pure JavaScript syntax (no TypeScript interfaces/types).",
-    "Override default shadcn Card and Button styles to remove shadows and implement crisp 1px borders.",
-    "Implement a 240px collapsible sidebar for navigation.",
-    "For the 'New Order' capture screen, create a unified dropzone/paste area that feels like a command palette.",
-    "The AI extraction review screen must show original source (e.g., PDF viewer) alongside extracted line items for 1:1 validation.",
-    "Apply `data-testid` attributes religiously to all buttons, links, form inputs, and status badges."
+    "CRITICAL: ALL text in the UI MUST be in Italian. E.g., 'Cerca', 'Nuovo Ordine', 'Ordini', 'Clienti', 'Impostazioni'.",
+    "CRITICAL: Use ONLY the brand colors. Primary is Midnight Blue (#0B1E3B). Do not change the name 'Ordia', logo mark, or colors.",
+    "Use Lucide icons for the minimal sidebar and across all components.",
+    "Build the Home page as an 'AI Command Center' with an intelligent natural-language summary hero section (e.g., 'Oggi 18 ordini, 16 automatici, 2 da revisionare').",
+    "Do NOT use heavy shadows, gradients, or fake KPIs/useless charts. The UI should be highly functional and minimalistic (like Stripe/Linear).",
+    "The 'New Order' screen must be spectacular: big modern channel buttons and a drag-and-drop zone.",
+    "The 'Order Review' screen must feature a two-column layout: left for original document, right for the editable AI-extracted table.",
+    "Implement inline order building: add/duplicate/drag rows, product search directly within the table.",
+    "Provide a Shopify-grade catalog experience with instant search and filters.",
+    "Ensure 'data-testid' attributes are added to all interactive and key informational elements.",
+    "Mobile must be designed per-screen specifically, not just squeezed down."
   ]
 }
