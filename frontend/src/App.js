@@ -10,6 +10,12 @@ import NewOrder from "@/pages/NewOrder";
 import Orders from "@/pages/Orders";
 import OrderReview from "@/pages/OrderReview";
 import Catalog from "@/pages/Catalog";
+import Setup from "@/pages/Setup";
+import WhatsAppSetup from "@/pages/setup/WhatsAppSetup";
+import EmailSetup from "@/pages/setup/EmailSetup";
+import ErpSetup from "@/pages/setup/ErpSetup";
+import TeamSetup from "@/pages/setup/TeamSetup";
+import CompanySetup from "@/pages/setup/CompanySetup";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -41,6 +47,12 @@ function App() {
           <Route path="/app/orders" element={<Protected><Orders /></Protected>} />
           <Route path="/app/orders/:id" element={<Protected><OrderReview /></Protected>} />
           <Route path="/app/catalog" element={<Protected><Catalog /></Protected>} />
+          <Route path="/app/setup" element={<Protected><Setup /></Protected>} />
+          <Route path="/app/setup/whatsapp" element={<Protected><WhatsAppSetup /></Protected>} />
+          <Route path="/app/setup/email" element={<Protected><EmailSetup /></Protected>} />
+          <Route path="/app/setup/erp" element={<Protected><ErpSetup /></Protected>} />
+          <Route path="/app/setup/team" element={<Protected><TeamSetup /></Protected>} />
+          <Route path="/app/setup/company" element={<Protected><CompanySetup /></Protected>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>

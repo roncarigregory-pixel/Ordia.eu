@@ -18,9 +18,13 @@ import io
 import json
 import uuid
 import base64
+import asyncio
 import logging
 import secrets
 import tempfile
+import smtplib
+import imaplib
+import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
@@ -158,7 +162,7 @@ async def register(body: RegisterBody):
     })
     await db.users.insert_one({
         "id": user_id, "company_id": company_id, "email": email, "name": body.name,
-        "password_hash": hash_password(body.password), "role": "admin", "created_at": now_iso(),
+        "password_hash": hash_password(body.password), "role": "owner", "created_at": now_iso(),
     })
     await seed_company_catalog(company_id)
     token = create_access_token(user_id, company_id, email)
@@ -553,6 +557,507 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     }
 
 # ---------------------------------------------------------------------------
+# Roles, company settings & team management
+# ---------------------------------------------------------------------------
+ROLES = ["owner", "admin", "sales", "operator", "warehouse", "readonly"]
+PRIVILEGED = {"owner", "admin"}
+GRAPH_VERSION = "v21.0"
+
+def require_privileged(user: dict):
+    if user.get("role") not in PRIVILEGED:
+        raise HTTPException(status_code=403, detail="Solo Owner/Admin possono eseguire questa azione.")
+
+def mask_secret(t: Optional[str]) -> str:
+    if not t:
+        return ""
+    return (t[:6] + "…" + t[-4:]) if len(t) > 12 else "••••••"
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    vat: Optional[str] = None
+    address: Optional[str] = None
+    country: Optional[str] = None
+    currency: Optional[str] = None
+    phone: Optional[str] = None
+
+class TeamMemberCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str = Field(min_length=6)
+    role: str = "operator"
+
+class RoleUpdate(BaseModel):
+    role: str
+
+@api.get("/company")
+async def get_company(user: dict = Depends(get_current_user)):
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+@api.put("/company")
+async def update_company(body: CompanyUpdate, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": update})
+    return await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+
+@api.get("/team")
+async def list_team(user: dict = Depends(get_current_user)):
+    members = await db.users.find(
+        {"company_id": user["company_id"]}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(500)
+    return members
+
+@api.post("/team")
+async def create_team_member(body: TeamMemberCreate, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    if body.role not in ROLES:
+        raise HTTPException(status_code=400, detail="Ruolo non valido")
+    email = body.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email già registrata")
+    doc = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"], "email": email,
+        "name": body.name, "password_hash": hash_password(body.password), "role": body.role,
+        "created_at": now_iso(),
+    }
+    await db.users.insert_one(dict(doc))
+    doc.pop("password_hash", None)
+    return doc
+
+@api.put("/team/{member_id}/role")
+async def update_member_role(member_id: str, body: RoleUpdate, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    if body.role not in ROLES:
+        raise HTTPException(status_code=400, detail="Ruolo non valido")
+    res = await db.users.update_one(
+        {"id": member_id, "company_id": user["company_id"]}, {"$set": {"role": body.role}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Membro non trovato")
+    return await db.users.find_one({"id": member_id}, {"_id": 0, "password_hash": 0})
+
+@api.delete("/team/{member_id}")
+async def delete_member(member_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    if member_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare te stesso")
+    await db.users.delete_one({"id": member_id, "company_id": user["company_id"]})
+    return {"ok": True}
+
+# ---------------------------------------------------------------------------
+# Integrations — provider-based, ERP-agnostic order channels & export
+# ---------------------------------------------------------------------------
+class WhatsAppConnect(BaseModel):
+    label: str = "WhatsApp Business"
+    access_token: str
+    phone_number_id: str
+    waba_id: str
+    app_secret: Optional[str] = None
+    verify_token: Optional[str] = None
+
+class WhatsAppTest(BaseModel):
+    to: str
+    text: str = "Ciao! Questo è un messaggio di prova da Ordia. La connessione WhatsApp funziona. ✅"
+
+class EmailConnect(BaseModel):
+    inbound_provider: Optional[str] = None  # gmail | m365 | imap | forwarding
+    inbound_host: Optional[str] = None
+    inbound_email: Optional[str] = None
+    inbound_password: Optional[str] = None
+    outbound_enabled: bool = False
+    outbound_host: Optional[str] = None
+    outbound_port: int = 587
+    outbound_email: Optional[str] = None
+    outbound_password: Optional[str] = None
+
+class ERPConnect(BaseModel):
+    provider: str = "webhook"        # webhook | rest | file
+    format: str = "json"             # json | csv | xml
+    endpoint_url: Optional[str] = None
+    method: str = "POST"
+    auth_header_name: Optional[str] = None
+    auth_header_value: Optional[str] = None
+
+IMAP_HOSTS = {"gmail": "imap.gmail.com", "m365": "outlook.office365.com"}
+SMTP_HOSTS = {"gmail": "smtp.gmail.com", "m365": "smtp.office365.com"}
+
+async def _get_integration(company_id: str, itype: str, account_id: Optional[str] = None):
+    q = {"company_id": company_id, "type": itype}
+    if account_id:
+        q["id"] = account_id
+    return await db.integrations.find_one(q, {"_id": 0})
+
+def _whatsapp_public(doc: dict) -> dict:
+    d = dict(doc)
+    d["access_token"] = mask_secret(doc.get("access_token"))
+    d["app_secret"] = mask_secret(doc.get("app_secret"))
+    return d
+
+# ---- Integrations overview / onboarding checklist -------------------------
+@api.get("/integrations")
+async def integrations_overview(user: dict = Depends(get_current_user)):
+    cid = user["company_id"]
+    wa = await db.integrations.find({"company_id": cid, "type": "whatsapp"}, {"_id": 0}).to_list(50)
+    email = await _get_integration(cid, "email")
+    erp = await _get_integration(cid, "erp")
+    products = await db.products.count_documents({"company_id": cid})
+    team = await db.users.count_documents({"company_id": cid})
+    company = await db.companies.find_one({"id": cid}, {"_id": 0})
+    wa_connected = any(a.get("status") == "connected" for a in wa)
+    steps = [
+        {"key": "company", "label": "Dati azienda", "done": bool(company and company.get("vat"))},
+        {"key": "catalog", "label": "Catalogo prodotti", "done": products > 0},
+        {"key": "whatsapp", "label": "WhatsApp Business", "done": wa_connected,
+         "status": "connected" if wa_connected else ("pending" if wa else "not_configured")},
+        {"key": "email", "label": "Email", "done": bool(email and email.get("status") == "connected"),
+         "status": (email or {}).get("status", "not_configured")},
+        {"key": "erp", "label": "Export ERP", "done": bool(erp and erp.get("status") == "connected"),
+         "status": (erp or {}).get("status", "not_configured")},
+        {"key": "team", "label": "Team", "done": team > 1},
+    ]
+    completed = sum(1 for s in steps if s["done"])
+    return {
+        "progress": round(completed / len(steps) * 100),
+        "completed": completed, "total": len(steps), "steps": steps,
+        "counts": {"whatsapp_accounts": len(wa), "products": products, "team": team},
+    }
+
+# ---- WhatsApp Business ----------------------------------------------------
+@api.get("/integrations/whatsapp")
+async def whatsapp_list(user: dict = Depends(get_current_user)):
+    accounts = await db.integrations.find(
+        {"company_id": user["company_id"], "type": "whatsapp"}, {"_id": 0}).to_list(50)
+    return [_whatsapp_public(a) for a in accounts]
+
+@api.post("/integrations/whatsapp")
+async def whatsapp_save(body: WhatsAppConnect, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    doc = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"], "type": "whatsapp",
+        "label": body.label, "access_token": body.access_token, "phone_number_id": body.phone_number_id,
+        "waba_id": body.waba_id, "app_secret": body.app_secret,
+        "verify_token": body.verify_token or secrets.token_urlsafe(16),
+        "status": "pending", "display_phone_number": None, "verified_name": None,
+        "last_error": None, "last_checked": None, "created_at": now_iso(),
+    }
+    await db.integrations.insert_one(dict(doc))
+    return _whatsapp_public(doc)
+
+@api.post("/integrations/whatsapp/{account_id}/validate")
+async def whatsapp_validate(account_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    acc = await _get_integration(user["company_id"], "whatsapp", account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account non trovato")
+
+    def _check():
+        base = f"https://graph.facebook.com/{GRAPH_VERSION}"
+        headers = {"Authorization": f"Bearer {acc['access_token']}"}
+        steps = []
+        # 1) token + phone number
+        r1 = requests.get(f"{base}/{acc['phone_number_id']}",
+                          headers=headers, params={"fields": "id,display_phone_number,verified_name"}, timeout=15)
+        steps.append(("phone_number", r1.status_code, r1.text))
+        if r1.status_code != 200:
+            return {"ok": False, "stage": "phone_number", "code": r1.status_code, "body": r1.text, "steps": steps}
+        phone = r1.json()
+        # 2) WABA
+        r2 = requests.get(f"{base}/{acc['waba_id']}", headers=headers, params={"fields": "id,name"}, timeout=15)
+        steps.append(("waba", r2.status_code, r2.text))
+        if r2.status_code != 200:
+            return {"ok": False, "stage": "waba", "code": r2.status_code, "body": r2.text, "steps": steps}
+        return {"ok": True, "phone": phone, "waba": r2.json(), "steps": steps}
+
+    try:
+        result = await asyncio.to_thread(_check)
+    except Exception as e:  # network / DNS
+        await db.integrations.update_one({"id": account_id}, {"$set": {
+            "status": "error", "last_error": f"Errore di rete: {e}", "last_checked": now_iso()}})
+        raise HTTPException(status_code=502, detail=f"Impossibile contattare Meta Graph API: {e}")
+
+    if not result["ok"]:
+        await db.integrations.update_one({"id": account_id}, {"$set": {
+            "status": "error", "last_error": f"{result['stage']} (HTTP {result['code']})",
+            "last_error_body": result["body"][:800], "last_checked": now_iso()}})
+        return {"status": "error", "stage": result["stage"], "code": result["code"],
+                "message": _wa_error_hint(result["code"], result["body"])}
+
+    await db.integrations.update_one({"id": account_id}, {"$set": {
+        "status": "connected", "display_phone_number": result["phone"].get("display_phone_number"),
+        "verified_name": result["phone"].get("verified_name"), "last_error": None, "last_checked": now_iso()}})
+    return {"status": "connected", "phone": result["phone"], "waba": result["waba"]}
+
+def _wa_error_hint(code: int, body: str) -> str:
+    b = (body or "").lower()
+    if code in (401, 190) or "expired" in b or "invalid oauth" in b:
+        return "Access Token non valido o scaduto. Genera un token permanente (System User) in Meta Business Settings."
+    if code == 403 or "permission" in b:
+        return "Permessi insufficienti. Il token deve avere gli scope whatsapp_business_messaging e whatsapp_business_management."
+    if code == 404 or "does not exist" in b or "unsupported" in b:
+        return "Phone Number ID o WABA ID non trovato. Verifica gli ID in WhatsApp Manager."
+    if "2388103" in b:
+        return "Il numero non è registrato correttamente. Completa la registrazione del numero e la verifica business."
+    return "Verifica ha fallito. Controlla credenziali, verifica business e registrazione del numero."
+
+@api.post("/integrations/whatsapp/{account_id}/test-message")
+async def whatsapp_test(account_id: str, body: WhatsAppTest, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    acc = await _get_integration(user["company_id"], "whatsapp", account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account non trovato")
+    if acc.get("status") != "connected":
+        raise HTTPException(status_code=400, detail="Connetti e valida l'account prima di inviare un test.")
+
+    def _send():
+        base = f"https://graph.facebook.com/{GRAPH_VERSION}"
+        headers = {"Authorization": f"Bearer {acc['access_token']}"}
+        payload = {"messaging_product": "whatsapp", "to": body.to, "type": "text", "text": {"body": body.text}}
+        r = requests.post(f"{base}/{acc['phone_number_id']}/messages", headers=headers, json=payload, timeout=15)
+        return r.status_code, r.text
+
+    try:
+        code, text = await asyncio.to_thread(_send)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Errore di rete: {e}")
+    if code != 200:
+        raise HTTPException(status_code=400, detail={"message": _wa_error_hint(code, text), "code": code, "body": text[:500]})
+    return {"status": "sent", "response": json.loads(text)}
+
+@api.delete("/integrations/whatsapp/{account_id}")
+async def whatsapp_delete(account_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    await db.integrations.delete_one({"id": account_id, "company_id": user["company_id"], "type": "whatsapp"})
+    return {"ok": True}
+
+# ---- WhatsApp webhook (public) — verify handshake + inbound messages ------
+@api.get("/webhooks/whatsapp")
+async def whatsapp_webhook_verify(request: Request):
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    acc = await db.integrations.find_one({"type": "whatsapp", "verify_token": token})
+    if mode == "subscribe" and acc and challenge:
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(challenge)
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+@api.post("/webhooks/whatsapp")
+async def whatsapp_webhook_receive(request: Request):
+    payload = await request.json()
+    try:
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                meta = value.get("metadata", {})
+                pnid = meta.get("phone_number_id")
+                acc = await db.integrations.find_one({"type": "whatsapp", "phone_number_id": pnid}, {"_id": 0})
+                if not acc:
+                    continue
+                for msg in value.get("messages", []):
+                    text = (msg.get("text") or {}).get("body", "")
+                    if not text:
+                        continue
+                    products = await db.products.find({"company_id": acc["company_id"]}, {"_id": 0}).to_list(2000)
+                    extracted = await run_extraction(text, None, products)
+                    review = sum(1 for i in extracted["line_items"] if i["needs_review"])
+                    await db.orders.insert_one({
+                        "id": str(uuid.uuid4()), "company_id": acc["company_id"], "created_by": "whatsapp",
+                        "source_type": "whatsapp", "source_preview": f"[WhatsApp da {msg.get('from')}]\n{text}"[:5000],
+                        "customer_name": extracted["customer_name"], "delivery_date": extracted["delivery_date"],
+                        "notes": extracted["notes"], "line_items": extracted["line_items"],
+                        "status": "needs_review" if review else "ready",
+                        "created_at": now_iso(), "updated_at": now_iso(),
+                    })
+    except Exception as e:
+        logger.warning("WhatsApp webhook error: %s", e)
+    return {"status": "ok"}
+
+# ---- Email channel --------------------------------------------------------
+@api.get("/integrations/email")
+async def email_get(user: dict = Depends(get_current_user)):
+    doc = await _get_integration(user["company_id"], "email")
+    forwarding = f"orders-{user['company_id'][:8]}@inbound.ordia.app"
+    if not doc:
+        return {"status": "not_configured", "forwarding_address": forwarding}
+    doc.pop("inbound_password", None)
+    doc.pop("outbound_password", None)
+    doc["forwarding_address"] = forwarding
+    return doc
+
+@api.post("/integrations/email")
+async def email_save(body: EmailConnect, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    cfg = body.model_dump()
+    cfg.update({"company_id": user["company_id"], "type": "email", "status": "pending",
+                "last_error": None, "updated_at": now_iso()})
+    existing = await _get_integration(user["company_id"], "email")
+    if existing:
+        await db.integrations.update_one({"id": existing["id"]}, {"$set": cfg})
+    else:
+        cfg["id"] = str(uuid.uuid4())
+        cfg["created_at"] = now_iso()
+        await db.integrations.insert_one(dict(cfg))
+    return {"status": "saved"}
+
+@api.post("/integrations/email/validate")
+async def email_validate(user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    doc = await _get_integration(user["company_id"], "email")
+    if not doc:
+        raise HTTPException(status_code=400, detail="Configura prima l'email")
+    provider = doc.get("inbound_provider")
+    if provider == "forwarding":
+        await db.integrations.update_one({"id": doc["id"]}, {"$set": {"status": "connected", "last_checked": now_iso()}})
+        return {"status": "connected", "mode": "forwarding"}
+
+    def _check():
+        results = {}
+        host = doc.get("inbound_host") or IMAP_HOSTS.get(provider)
+        if host and doc.get("inbound_email") and doc.get("inbound_password"):
+            m = imaplib.IMAP4_SSL(host, 993)
+            m.login(doc["inbound_email"], doc["inbound_password"])
+            m.logout()
+            results["inbound"] = "ok"
+        if doc.get("outbound_enabled") and doc.get("outbound_host") and doc.get("outbound_email"):
+            s = smtplib.SMTP(doc["outbound_host"], int(doc.get("outbound_port") or 587), timeout=15)
+            s.starttls()
+            s.login(doc["outbound_email"], doc["outbound_password"])
+            s.quit()
+            results["outbound"] = "ok"
+        return results
+
+    try:
+        results = await asyncio.to_thread(_check)
+    except Exception as e:
+        await db.integrations.update_one({"id": doc["id"]}, {"$set": {"status": "error", "last_error": str(e), "last_checked": now_iso()}})
+        raise HTTPException(status_code=400, detail=f"Autenticazione email fallita: {e}. Usa una App Password se hai la verifica in due passaggi.")
+    await db.integrations.update_one({"id": doc["id"]}, {"$set": {"status": "connected", "last_error": None, "last_checked": now_iso()}})
+    return {"status": "connected", "checks": results}
+
+# ---- ERP export layer (provider-based, ERP-agnostic) ----------------------
+def standardize_order(order: dict, company: dict) -> dict:
+    """Canonical internal export format — the single contract every ERP connector consumes."""
+    return {
+        "schema": "ordia.order.v1",
+        "order_id": order["id"],
+        "company": {"id": company.get("id"), "name": company.get("name"), "vat": company.get("vat")},
+        "customer": {"name": order.get("customer_name")},
+        "delivery_date": order.get("delivery_date"),
+        "notes": order.get("notes"),
+        "currency": company.get("currency", "EUR"),
+        "lines": [
+            {"sku": i.get("matched_sku"), "product": i.get("matched_name") or i.get("raw_text"),
+             "quantity": i.get("quantity"), "unit": i.get("unit"), "unit_price": i.get("price"),
+             "line_total": round((i.get("price") or 0) * (i.get("quantity") or 0), 2)}
+            for i in order.get("line_items", [])
+        ],
+        "total": round(sum((i.get("price") or 0) * (i.get("quantity") or 0) for i in order.get("line_items", [])), 2),
+    }
+
+def _standard_to_xml(std: dict) -> str:
+    lines = "".join(
+        f'<line><sku>{l["sku"] or ""}</sku><product>{l["product"]}</product>'
+        f'<quantity>{l["quantity"]}</quantity><unit>{l["unit"]}</unit>'
+        f'<unit_price>{l["unit_price"]}</unit_price></line>' for l in std["lines"])
+    return (f'<?xml version="1.0" encoding="UTF-8"?><order id="{std["order_id"]}">'
+            f'<customer>{std["customer"]["name"] or ""}</customer>'
+            f'<total>{std["total"]}</total><lines>{lines}</lines></order>')
+
+@api.get("/integrations/erp")
+async def erp_get(user: dict = Depends(get_current_user)):
+    doc = await _get_integration(user["company_id"], "erp")
+    if not doc:
+        return {"status": "not_configured"}
+    if doc.get("auth_header_value"):
+        doc["auth_header_value"] = mask_secret(doc["auth_header_value"])
+    return doc
+
+@api.post("/integrations/erp")
+async def erp_save(body: ERPConnect, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    cfg = body.model_dump()
+    cfg.update({"company_id": user["company_id"], "type": "erp", "status": "pending", "updated_at": now_iso()})
+    existing = await _get_integration(user["company_id"], "erp")
+    if existing:
+        # keep old secret if masked value re-sent
+        ahv = cfg.get("auth_header_value") or ""
+        if ahv.endswith("…") or "•" in ahv:
+            cfg["auth_header_value"] = existing.get("auth_header_value")
+        await db.integrations.update_one({"id": existing["id"]}, {"$set": cfg})
+    else:
+        cfg["id"] = str(uuid.uuid4())
+        cfg["created_at"] = now_iso()
+        await db.integrations.insert_one(dict(cfg))
+    return {"status": "saved"}
+
+@api.post("/integrations/erp/test")
+async def erp_test(user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    doc = await _get_integration(user["company_id"], "erp")
+    if not doc or not doc.get("endpoint_url"):
+        raise HTTPException(status_code=400, detail="Configura prima l'endpoint ERP")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+    sample = standardize_order({
+        "id": "SAMPLE-0001", "customer_name": "Cliente di Prova", "delivery_date": "domani", "notes": "Test",
+        "line_items": [{"matched_sku": "PRD-001", "matched_name": "Roma Tomatoes", "quantity": 3, "unit": "case", "price": 18.5}],
+    }, company or {})
+
+    def _send():
+        headers = {}
+        if doc.get("auth_header_name") and doc.get("auth_header_value"):
+            headers[doc["auth_header_name"]] = doc["auth_header_value"]
+        fmt = doc.get("format", "json")
+        if fmt == "json":
+            headers["Content-Type"] = "application/json"
+            r = requests.request(doc.get("method", "POST"), doc["endpoint_url"], json=sample, headers=headers, timeout=15)
+        elif fmt == "xml":
+            headers["Content-Type"] = "application/xml"
+            r = requests.request(doc.get("method", "POST"), doc["endpoint_url"], data=_standard_to_xml(sample), headers=headers, timeout=15)
+        else:  # csv
+            headers["Content-Type"] = "text/csv"
+            buf = io.StringIO(); pd.DataFrame(sample["lines"]).to_csv(buf, index=False)
+            r = requests.request(doc.get("method", "POST"), doc["endpoint_url"], data=buf.getvalue(), headers=headers, timeout=15)
+        return r.status_code, r.text[:500]
+
+    try:
+        code, text = await asyncio.to_thread(_send)
+    except Exception as e:
+        await db.integrations.update_one({"id": doc["id"]}, {"$set": {"status": "error", "last_error": str(e), "last_checked": now_iso()}})
+        raise HTTPException(status_code=502, detail=f"Impossibile raggiungere l'endpoint: {e}")
+    ok = 200 <= code < 300
+    await db.integrations.update_one({"id": doc["id"]}, {"$set": {
+        "status": "connected" if ok else "error", "last_error": None if ok else f"HTTP {code}", "last_checked": now_iso()}})
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"L'endpoint ha risposto HTTP {code}: {text}")
+    return {"status": "connected", "code": code}
+
+@api.post("/orders/{order_id}/push-erp")
+async def push_order_to_erp(order_id: str, user: dict = Depends(get_current_user)):
+    doc = await _get_integration(user["company_id"], "erp")
+    if not doc or doc.get("status") != "connected":
+        raise HTTPException(status_code=400, detail="Nessun ERP connesso. Configuralo in Configurazione → Export ERP.")
+    order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Ordine non trovato")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+    std = standardize_order(order, company or {})
+
+    def _send():
+        headers = {"Content-Type": "application/json"}
+        if doc.get("auth_header_name") and doc.get("auth_header_value"):
+            headers[doc["auth_header_name"]] = doc["auth_header_value"]
+        r = requests.request(doc.get("method", "POST"), doc["endpoint_url"], json=std, headers=headers, timeout=20)
+        return r.status_code
+
+    code = await asyncio.to_thread(_send)
+    if not (200 <= code < 300):
+        raise HTTPException(status_code=400, detail=f"ERP ha risposto HTTP {code}")
+    await db.orders.update_one({"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()}})
+    return {"status": "pushed", "code": code}
+
+# ---------------------------------------------------------------------------
 # Pilot demo workspace seeding
 # ---------------------------------------------------------------------------
 DEMO_EMAIL = os.environ.get("DEMO_EMAIL", "demo@ordia.app")
@@ -696,6 +1201,7 @@ async def startup():
     await db.products.create_index("company_id")
     await db.orders.create_index("company_id")
     await db.login_attempts.create_index("identifier")
+    await db.integrations.create_index([("company_id", 1), ("type", 1)])
     await seed_demo_workspace()
     logger.info("Ordia API ready.")
 

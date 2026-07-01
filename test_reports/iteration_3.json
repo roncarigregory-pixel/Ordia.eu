@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 3 verification of the new ONBOARDING / INTEGRATIONS feature. Backend: 21/21 pytest cases in /app/backend/tests/test_setup_integrations.py pass. Covers /api/company GET+PUT (VAT/currency/country persistence), /api/team CRUD + RBAC (owner/admin/sales/operator/warehouse/readonly enum enforced, invalid role rejected 400, cannot delete self 400, password_hash + _id never returned, multi-tenant isolation confirmed), WhatsApp save with masked token (access_token never returned in clear), graceful validate failure against real Meta Graph API with dummy creds (HTTP 200 body {status:'error', message: Italian hint mentioning 'Access Token non valido'}), delete account, Email get returning forwarding_address at orders-<companyprefix>@inbound.ordia.app, save+validate 'forwarding' returns status connected, IMAP fake-cred validate does NOT raise 500 (graceful), ERP save+test against https://httpbin.org/post returns {status:'connected', code:200} and setting the endpoint updates state, invalid host graceful (502/400), /api/orders/{id}/push-erp pushes a real demo order to httpbin and marks it exported, /api/integrations overview returns 6 checklist steps with correct keys. Multi-tenant isolation: a freshly-registered second company sees status='not_configured' for ERP, empty WhatsApp list, and cannot see demo user in /api/team. Frontend E2E via Playwright: pilot mode auto-lands on /app/setup (progress 4/6 · 67%), all 6 setup cards + nav-setup visible, Company saved (vat persisted after reload), ERP saved + tested with httpbin (success toast 'Connessione ERP verificata'), Team add-modal → member added → deleted, Email forwarding-address visible, WhatsApp wizard: wa-start → creds form → wa-save-creds triggers validation → wa-error visible with Italian hint 'Access Token non valido o scaduto. Genera un token permanente (System User) in Meta Business Settings.' and wa-retry present, wa-troubleshooting accordion opens. Pilot regression: '/' still auto-lands on dashboard with kpi-total-orders visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/integrations/erp (save)", "issue": "erp_save() crashed with 500 AttributeError: 'NoneType' object has no attribute 'endswith' whenever an existing ERP config was updated without auth_header_value. FIXED in /app/backend/server.py line 985 by defaulting to empty string before the mask check."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_setup_integrations.py",
+    "/app/test_reports/pytest/pytest_iteration3.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional polish: EmailSetup only shows one visible provider tab (`email-tab-imap` was not visible in the current UI — IMAP fields appear via a different control). Confirm the PR spec wants a discoverable IMAP toggle."
+  ],
+  "critical_code_review_comments": [
+    "erp_save() had an unsafe .endswith() on a possibly-None auth_header_value causing 500s (FIXED). Same pattern should be reviewed anywhere .endswith / 'in' is used on optional Mongo fields.",
+    "whatsapp_validate() correctly returns 200 with status='error' for invalid Meta creds — good UX. However when the outer requests call itself raises (network layer), the endpoint raises HTTPException 502; the frontend WhatsAppSetup should handle that shape too (currently it looks for {status:'error', message} in the 200 body).",
+    "erp_test() uses `requests.request(method, ...)` where `method` is user-controlled and defaults to POST — safe, but consider whitelisting to {POST, PUT, PATCH} to prevent accidental GET/DELETE calls that could hit destructive routes.",
+    "Standardized ERP payload (standardize_order) is not versioned in the JSON body itself (README mentions ordia.order.v1 but the payload has no schema_version key). Consider adding `\"schema_version\": \"ordia.order.v1\"` at the top level for downstream consumers.",
+    "TeamMemberCreate accepts EmailStr but does not validate uniqueness across companies before hashing password (find_one is done — good) — but password is stored via hash_password without a min-complexity check beyond length 6.",
+    "push_order_to_erp() marks order status='exported' even if the ERP returned 2xx without a body — no idempotency key sent, so retrying will duplicate on the ERP side. Consider passing order_id as an Idempotency-Key header."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_setup_integrations.py (new — 21 tests)",
+    "/app/backend/server.py (bug fix: None-safe auth_header_value in erp_save)"
+  ],
+  "success_rate": {"backend": "100% (21/21 after fix)", "frontend": "100% (setup hub, company, erp, team, email, whatsapp wizard, pilot regression)"},
+  "test_credentials": "Demo: demo@ordia.app / demo123 (privileged admin, auto-used by pilot mode). Team-add test uses @example.com emails.",
+  "seed_data_creation": "No permanent seed data created. Tests create/delete transient team members prefixed TEST_, a WhatsApp account (deleted), and set ERP endpoint to https://httpbin.org/post on the demo tenant (leaves demo in 'connected' state, which is the intended demo experience).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_setup_integrations.py is the regression suite for the onboarding feature. It relies on external reachability of httpbin.org (ERP tests) and graph.facebook.com (WhatsApp graceful-failure test — expects HTTP 401 from Meta with dummy token). If either becomes unreachable the ERP and WhatsApp validate tests will fail; treat as flaky-external, not app bugs. The demo tenant will end each run with ERP endpoint pointed at httpbin.org and email set to forwarding=connected — this is idempotent for repeated runs.",
+  "rca of the issue": "erp_save() 500 root cause: `cfg.get('auth_header_value', '').endswith('…')` — when the frontend omitted the auth value (empty string is fine, but None slipped through model_dump when field wasn't sent), calling .endswith on None raised AttributeError which FastAPI converted to 500. Fix normalizes to empty string first. Reproduction: PUT /api/integrations/erp twice with body missing auth_header_value → first call inserts (existing=None path, no crash), second call hits the existing-branch and crashes. Mitigation deployed and verified by re-running the 3 ERP tests (all green)."
+}

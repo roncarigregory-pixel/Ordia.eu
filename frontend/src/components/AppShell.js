@@ -5,6 +5,7 @@ import {
   Tray,
   Plus,
   Package,
+  GearSix,
   SignOut,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ const NAV = [
   { to: "/app", label: "Dashboard", icon: SquaresFour, end: true, testid: "nav-dashboard" },
   { to: "/app/orders", label: "Ordini", icon: Tray, testid: "nav-orders" },
   { to: "/app/catalog", label: "Catalogo", icon: Package, testid: "nav-catalog" },
+  { to: "/app/setup", label: "Configurazione", icon: GearSix, testid: "nav-setup" },
 ];
 
 export function AppShell({ children }) {
