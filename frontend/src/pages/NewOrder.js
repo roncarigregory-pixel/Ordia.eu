@@ -100,7 +100,7 @@ export default function NewOrder() {
     <div className="max-w-2xl mx-auto animate-fade-up">
       <h1 className="font-display text-4xl font-black tracking-tighter">Nuovo Ordine</h1>
       <p className="mt-1 text-sm text-muted-foreground mb-6">
-        Incolla un messaggio o trascina un file — testo WhatsApp, email, PDF, Excel, CSV o una foto.
+        Incolla un messaggio o trascina un file — testo WhatsApp, email, PDF, Excel, CSV, una foto o un messaggio vocale.
       </p>
 
       <div className="inline-flex rounded-md border border-border bg-white p-1 mb-4">
@@ -152,12 +152,12 @@ export default function NewOrder() {
         >
           <FileArrowUp size={36} className="mx-auto text-slate-400" />
           <p className="mt-3 text-sm font-medium">{file ? file.name : "Trascina un file o clicca per sfogliare"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">PDF · Excel · CSV · PNG · JPG · WEBP</p>
+          <p className="mt-1 text-xs text-muted-foreground">PDF · Excel · CSV · PNG · JPG · WEBP · Vocale (MP3, M4A, WAV, OGG)</p>
           <input
             ref={fileInput}
             type="file"
             data-testid="file-input"
-            accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
+            accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.mp3,.mp4,.m4a,.wav,.webm,.ogg,.mpeg,.mpga,audio/*"
             className="hidden"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />

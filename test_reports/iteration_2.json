@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 2 verification for Ordia's two new features (PILOT MODE + VOICE MESSAGES) + regression. Backend: 3/3 pytest cases in test_pilot_and_voice.py pass — (1) /api/dashboard/stats returns total_orders>=5 and >=3 of the seeded Italian customer names (Trattoria Sole, Hotel Aurora, Bar Centrale, Ristorante Da Marco, Pizzeria Vesuvio); (2) /api/orders lists >=5 seed orders spanning validated/exported/needs_review/ready statuses; (3) POST /api/orders/extract with source_type=file and an espeak-ng-synthesized Italian .wav ('tre casse di mozzarella due sacchi di farina una cassa di coca cola') returns a persisted order whose source_preview starts with '[Messaggio vocale trascritto]' and whose line_items include catalog matches for mozzarella/farina/cola. Frontend E2E: opening '/' with REACT_APP_PILOT_MODE=true auto-lands on Dashboard ('Centro di Comando', kpi-total-orders='Ordini 94 elaborati', kpi-hours-saved visible) with NO manual login. Sidebar shows pilot-badge='Demo'. Recent orders section renders 4 of 5 seeded Italian customers. /login remains reachable (login-email-input present) while pilot session is active. New Order → tab-file → file-dropzone hint includes 'Vocale (MP3, M4A, WAV, OGG)' and the underlying file input accept string includes .mp3/.m4a/.wav/.ogg/.webm/audio/*. Regression text flow (use-sample-order → extract-order-button → OrderReview with 5 match-select entries → validate-order-button → 'Ordine validato' toast) still works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "OrderReview (match dropdown)", "issues": ["Same pre-existing dev-tooling console warning as iteration_1: '<span> cannot be a child of <option>'. Injected by Emergent x-file-name overlay, not app code. No user-visible impact."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pilot_and_voice.py",
+    "/app/test_reports/pytest/pytest_iteration2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "seed_demo_workspace() is idempotent on order presence (demo_seed:True guard) — good. However, if the demo user's password is ever rotated in .env, existing user row is not updated (only created on first run). Consider mirroring the seed_admin playbook rule and update password_hash when DEMO_PASSWORD changes.",
+    "transcribe_audio() uses NamedTemporaryFile(delete=True) then opens the file BY NAME a second time inside the same 'with' block. Works on Linux but is fragile on Windows (POSIX-only open-while-locked). Since deployment is Linux-only this is fine, but flag if cross-platform is ever needed.",
+    "extract_order() audio branch does not enforce a max file size — a large audio upload will be fully read into memory (content = await file.read()) then written to /tmp before Whisper. Consider streaming or a size cap.",
+    "PILOT_MODE default in AuthContext.js is `process.env.REACT_APP_PILOT_MODE !== 'false'` — this means pilot mode is ON unless explicitly set to 'false'. If the env var is missing at build time, production will also auto-login as demo. Suggest inverting default (opt-in) before non-preview deploy.",
+    "App.js: when pilotMode is true, authenticated users are NOT redirected away from /login, which is the intended behavior — but there is no visible 'Torna alla demo' link on /login, so a preview visitor who lands there may be confused. Minor UX polish."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pilot_and_voice.py (new)"
+  ],
+  "success_rate": {"backend": "100% (3/3 new-feature tests)", "frontend": "100% (all pilot + voice-hint + regression steps)"},
+  "test_credentials": "Demo: demo@ordia.app / demo123 (auto-used by pilot mode).",
+  "seed_data_creation": "No new seed data created by tests. The backend startup seed_demo_workspace() populates 5 demo orders across statuses for demo@ordia.app; verified via /api/dashboard/stats and /api/orders. Voice test creates one additional order via /api/orders/extract but no cleanup was needed (isolated to demo workspace).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_pilot_and_voice.py covers only the 2 new features + demo-seed sanity. The original backend_test.py (16 tests, iteration_1) remains valid for full regression. Voice test requires espeak-ng + ffmpeg (both preinstalled at /usr/bin). Whisper via EMERGENT_LLM_KEY is reliable on espeak-ng output but expect ~5–8s latency per call — timeout is set to 180s. Pilot-mode auto-login round-trip typically completes in <3s in preview; selector wait for kpi-total-orders is set to 20s.",
+  "rca of the issue": "No bugs found in this iteration — both new features (pilot auto-login into demo workspace + voice-message extraction) work end-to-end. All 3 new backend tests pass, all frontend E2E assertions pass, and the previously-verified text-extraction flow still works."
+}

@@ -16,7 +16,7 @@ const NAV = [
 ];
 
 export function AppShell({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, pilotMode } = useAuth();
   const navigate = useNavigate();
 
   const initials = (user?.name || "U")
@@ -35,6 +35,11 @@ export function AppShell({ children }) {
             <span className="text-primary-foreground font-display font-black text-sm">O</span>
           </div>
           <span className="font-display font-bold text-lg tracking-tight">Ordia</span>
+          {pilotMode && (
+            <span data-testid="pilot-badge" className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              Demo
+            </span>
+          )}
         </div>
 
         <div className="px-3 pt-4">
@@ -83,7 +88,7 @@ export function AppShell({ children }) {
               data-testid="logout-button"
               onClick={logout}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Esci"
+              title={pilotMode ? "Esci dalla demo" : "Esci"}
             >
               <SignOut size={18} />
             </button>

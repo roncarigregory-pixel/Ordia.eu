@@ -20,6 +20,7 @@ import uuid
 import base64
 import logging
 import secrets
+import tempfile
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
@@ -34,6 +35,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from emergentintegrations.llm.openai import OpenAISpeechToText
 
 from catalog_seed import SEED_CATALOG
 
@@ -263,6 +265,20 @@ def _extract_pdf_text(content: bytes) -> str:
     reader = PdfReader(io.BytesIO(content))
     return "\n".join((page.extract_text() or "") for page in reader.pages)
 
+AUDIO_EXTS = (".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg")
+
+async def transcribe_audio(content: bytes, filename: str) -> str:
+    """Transcribe a voice message to text using OpenAI Whisper (whisper-1)."""
+    suffix = os.path.splitext(filename or "audio.mp3")[1] or ".mp3"
+    stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+        tmp.write(content)
+        tmp.flush()
+        tmp.seek(0)
+        with open(tmp.name, "rb") as audio_file:
+            response = await stt.transcribe(file=audio_file, model="whisper-1", response_format="json")
+    return (response.text or "").strip()
+
 # ---------------------------------------------------------------------------
 # AI extraction pipeline
 # ---------------------------------------------------------------------------
@@ -398,7 +414,13 @@ async def extract_order(
                 raise HTTPException(status_code=400, detail="Could not read text from this PDF. Try an image instead.")
         elif fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
             image_b64 = base64.b64encode(content).decode("utf-8")
-            source_preview = f"[Image: {file.filename}]"
+            source_preview = f"[Immagine: {file.filename}]"
+        elif fname.endswith(AUDIO_EXTS):
+            transcript = await transcribe_audio(content, fname)
+            if not transcript.strip():
+                raise HTTPException(status_code=400, detail="Impossibile trascrivere l'audio. Riprova con un file più chiaro.")
+            source_text = transcript
+            source_preview = f"[Messaggio vocale trascritto]\n{transcript}"
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type")
     else:
@@ -531,6 +553,132 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     }
 
 # ---------------------------------------------------------------------------
+# Pilot demo workspace seeding
+# ---------------------------------------------------------------------------
+DEMO_EMAIL = os.environ.get("DEMO_EMAIL", "demo@ordia.app")
+DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo123")
+
+DEMO_ORDERS = [
+    {
+        "customer_name": "Trattoria Sole",
+        "delivery_date": "domani",
+        "source_type": "text",
+        "status": "validated",
+        "days_ago": 1,
+        "source_preview": "Ciao, sono Maria della Trattoria Sole. Per domani:\n- 3 casse mozzarella\n- 2 sacchi farina 00\n- 5 scatole pomodori pelati\n- 1 cassa coca\nGrazie!",
+        "lines": [
+            ("DAI-021", "3 casse mozzarella", 3, 0.99),
+            ("DRY-010", "2 sacchi farina 00", 2, 0.97),
+            ("CND-070", "5 scatole pomodori pelati", 5, 0.95),
+            ("BEV-040", "1 cassa coca", 1, 0.98),
+        ],
+    },
+    {
+        "customer_name": "Hotel Aurora",
+        "delivery_date": "venerdì",
+        "source_type": "email",
+        "status": "exported",
+        "days_ago": 2,
+        "source_preview": "Ordine settimanale Hotel Aurora:\n- 4 box petto di pollo\n- 2 casse olio evo\n- 3 vassoi uova\n- 6 casse acqua naturale",
+        "lines": [
+            ("MEA-030", "4 box petto di pollo", 4, 0.94),
+            ("OIL-050", "2 casse olio evo", 2, 0.96),
+            ("DAI-023", "3 vassoi uova", 3, 0.99),
+            ("BEV-041", "6 casse acqua naturale", 6, 0.97),
+        ],
+    },
+    {
+        "customer_name": "Bar Centrale",
+        "delivery_date": "lunedì",
+        "source_type": "whatsapp",
+        "status": "needs_review",
+        "days_ago": 0,
+        "source_preview": "Buongiorno! Per lunedì: 2 sacchi zucchero, 5 casse latte, un po' di cornetti (vedere quantità) e 3 casse succo arancia.",
+        "lines": [
+            ("DRY-011", "2 sacchi zucchero", 2, 0.95),
+            ("DAI-020", "5 casse latte", 5, 0.97),
+            ("BAK-080", "un po' di cornetti", 2, 0.42),
+            ("BEV-042", "3 casse succo arancia", 3, 0.9),
+        ],
+    },
+    {
+        "customer_name": "Ristorante Da Marco",
+        "delivery_date": "mercoledì",
+        "source_type": "image",
+        "status": "ready",
+        "days_ago": 0,
+        "source_preview": "[Immagine: ordine_damarco.jpg]",
+        "lines": [
+            ("MEA-031", "5kg macinato", 5, 0.88),
+            ("FRZ-060", "4 casse patatine", 4, 0.93),
+            ("PRD-002", "2 casse insalata iceberg", 2, 0.9),
+            ("DAI-022", "1 cassa burro", 1, 0.91),
+        ],
+    },
+    {
+        "customer_name": "Pizzeria Vesuvio",
+        "delivery_date": "giovedì",
+        "source_type": "text",
+        "status": "validated",
+        "days_ago": 3,
+        "source_preview": "Ordine Vesuvio: 6 casse mozzarella, 4 scatole pelati, 3 casse olio girasole, 2 sacchi farina.",
+        "lines": [
+            ("DAI-021", "6 casse mozzarella", 6, 0.99),
+            ("CND-070", "4 scatole pelati", 4, 0.95),
+            ("OIL-051", "3 casse olio girasole", 3, 0.94),
+            ("DRY-010", "2 sacchi farina", 2, 0.96),
+        ],
+    },
+]
+
+async def seed_demo_workspace():
+    """Idempotently ensure a demo company, user, catalog and realistic orders exist
+    for the pilot experience. Safe to run on every startup."""
+    user = await db.users.find_one({"email": DEMO_EMAIL})
+    if not user:
+        company_id = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        await db.companies.insert_one({"id": company_id, "name": "Fresh Foods Ingrosso", "created_at": now_iso()})
+        await db.users.insert_one({
+            "id": user_id, "company_id": company_id, "email": DEMO_EMAIL, "name": "Demo Admin",
+            "password_hash": hash_password(DEMO_PASSWORD), "role": "admin", "created_at": now_iso(),
+        })
+        user = {"id": user_id, "company_id": company_id}
+    company_id = user["company_id"]
+    user_id = user["id"]
+
+    if await db.products.count_documents({"company_id": company_id}) == 0:
+        await seed_company_catalog(company_id)
+
+    if await db.orders.count_documents({"company_id": company_id, "demo_seed": True}) > 0:
+        return
+
+    products = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(2000)
+    by_sku = {p["sku"]: p for p in products}
+
+    for spec in DEMO_ORDERS:
+        line_items = []
+        for sku, raw, qty, conf in spec["lines"]:
+            p = by_sku.get(sku)
+            if not p:
+                continue
+            line_items.append({
+                "id": str(uuid.uuid4()), "raw_text": raw, "quantity": float(qty),
+                "unit": p["unit"], "matched_product_id": p["id"], "matched_sku": p["sku"],
+                "matched_name": p["name"], "price": p["price"], "confidence": conf,
+                "needs_review": conf < 0.8,
+            })
+        ts = (datetime.now(timezone.utc) - timedelta(days=spec["days_ago"], hours=2)).isoformat()
+        await db.orders.insert_one({
+            "id": str(uuid.uuid4()), "company_id": company_id, "created_by": user_id,
+            "source_type": spec["source_type"], "source_preview": spec["source_preview"],
+            "customer_name": spec["customer_name"], "delivery_date": spec["delivery_date"],
+            "notes": None, "line_items": line_items, "status": spec["status"],
+            "demo_seed": True, "created_at": ts, "updated_at": ts,
+        })
+    logger.info("Demo workspace seeded (%d orders).", len(DEMO_ORDERS))
+
+# ---------------------------------------------------------------------------
 # App wiring
 # ---------------------------------------------------------------------------
 app.include_router(api)
@@ -548,6 +696,7 @@ async def startup():
     await db.products.create_index("company_id")
     await db.orders.create_index("company_id")
     await db.login_attempts.create_index("identifier")
+    await seed_demo_workspace()
     logger.info("Ordia API ready.")
 
 @app.on_event("shutdown")

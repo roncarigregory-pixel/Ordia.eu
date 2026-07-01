@@ -19,9 +19,11 @@ function Protected({ children }) {
 }
 
 function PublicOnly({ children }) {
-  const { user, ready } = useAuth();
+  const { user, ready, pilotMode } = useAuth();
   if (!ready) return <div className="min-h-screen bg-background" />;
-  if (user) return <Navigate to="/app" replace />;
+  // In pilot mode the login/register pages stay reachable for preview even
+  // when the demo session is active; only redirect in production auth mode.
+  if (user && !pilotMode) return <Navigate to="/app" replace />;
   return children;
 }
 
