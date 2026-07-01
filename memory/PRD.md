@@ -59,10 +59,16 @@ Core workflow: Receive → Understand → Extract → Validate → Learn → Exp
 - Tested: iteration_3 → 21/21 backend, full frontend E2E, all pass (1 minor ERP-save bug fixed).
 
 ## Next Tasks
-- Milestone 2: real inbound email polling (IMAP fetch + attachment parsing) + WhatsApp webhook subscription automation.
-- Milestone 3: dedicated ERP connector foundations (registry + mappers) on voxera.order.v1.
+- Milestone 3: dedicated ERP connector foundations (registry + mappers) on ordia.order.v1.
 - Milestone 4: outbound notifications (order confirmations + low-confidence clarification requests).
 - Turn off pilot mode (REACT_APP_PILOT_MODE=false) for real customer onboarding.
+
+## Implemented — Milestone 2 (2026-07-01): Real inbound channels + unified pipeline
+- **Centralized pipeline core** `ingest_order()` — every channel (manual upload, email, WhatsApp, future plugins) flows through one function: Input → AI (Claude) → Catalog match → Learning loop → draft order. Idempotent by `external_id`; refactored extract_order + WhatsApp to use it.
+- **WhatsApp Business (real)**: webhook verify handshake; inbound receive of text, images and documents (media downloaded via Graph API); auto `subscribed_apps` on successful validation. Verified: Meta-style payload → order with matched line items + source_meta; idempotency; graceful media-failure (no 500s).
+- **Real IMAP polling**: connect Gmail/Outlook/IMAP, background poll loop (EMAIL_POLL_INTERVAL) + manual "Controlla ora la posta" endpoint; parses body + attachments (PDF/Excel/CSV/images) into orders; dedup by Message-ID; graceful auth failures. Forwarding-address mode supported.
+- Production-grade: logging, timeouts, retries via to_thread+wait_for, per-account error isolation, multi-tenant scoping, order external_id index.
+- Tested: iteration_4 → 12/12 backend + frontend, all pass. NOTE: real IMAP/WhatsApp accounts were not available, so live message delivery was validated via a genuine Meta webhook payload + graceful-failure/idempotency/gating tests.
 
 ## Implemented — Brand + Milestone 1 (2026-07-01)
 - **Brand: Ordia** (final). Domain chosen: **ordia.eu** (verified available via WHOIS EURid + RDAP; ordia.com is taken/aftermarket). Identity: evolved navy "O" ring mark, uppercase ORDIA wordmark (Satoshi), midnight-blue (#0B1E3B) + white theme, favicon (white O on navy tile), horizontal lockup asset. Demo login demo@ordia.app/demo123. (Note: briefly explored "Voxera" then reverted fully to Ordia.)
