@@ -1,55 +1,48 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "sonner";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AppShell } from "@/components/AppShell";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Dashboard from "@/pages/Dashboard";
+import NewOrder from "@/pages/NewOrder";
+import Orders from "@/pages/Orders";
+import OrderReview from "@/pages/OrderReview";
+import Catalog from "@/pages/Catalog";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function Protected({ children }) {
+  const { user, ready } = useAuth();
+  if (!ready) return <div className="min-h-screen bg-background" />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <AppShell>{children}</AppShell>;
+}
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+function PublicOnly({ children }) {
+  const { user, ready } = useAuth();
+  if (!ready) return <div className="min-h-screen bg-background" />;
+  if (user) return <Navigate to="/app" replace />;
+  return children;
+}
 
 function App() {
   return (
-    <div className="App">
+    <AuthProvider>
       <BrowserRouter>
+        <Toaster position="top-center" richColors />
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
+          <Route path="/" element={<Navigate to="/app" replace />} />
+          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+          <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+          <Route path="/app" element={<Protected><Dashboard /></Protected>} />
+          <Route path="/app/new" element={<Protected><NewOrder /></Protected>} />
+          <Route path="/app/orders" element={<Protected><Orders /></Protected>} />
+          <Route path="/app/orders/:id" element={<Protected><OrderReview /></Protected>} />
+          <Route path="/app/catalog" element={<Protected><Catalog /></Protected>} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>
-    </div>
+    </AuthProvider>
   );
 }
 

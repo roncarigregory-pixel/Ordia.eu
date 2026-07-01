@@ -1,0 +1,40 @@
+{
+  "summary": "First-iteration full-stack test of Ordia. Backend: 16/16 pytest tests pass, covering auth (register+seed catalog, login demo, wrong-password 401, /me guard, duplicate-email 400), catalog (multi-tenant isolation + CRUD), AI extraction via text/CSV/image (Claude Sonnet 4.6 via EMERGENT_LLM_KEY), order lifecycle (list/get/update/validate), export CSV+JSON (correct mime + content-disposition + status->exported), and dashboard stats. Frontend E2E: demo login -> Dashboard 'Centro di Comando' -> Nuovo Ordine via new-order-cta -> use-sample-order -> extract-order-button -> OrderReview (5 line items with match-select components + order-source visible) -> validate-order-button (green toast 'Ordine validato') -> nav-orders -> nav-catalog with working search. No blocking errors surfaced on the pages.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "OrderReview (match dropdown)", "issues": ["Console React hydration warning: <span> cannot be a child of <option>. Caused by Emergent dev tooling wrapping option text with an x-file-name span; no user-visible impact. Not an app-code bug — can be ignored in preview builds."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py packs auth + catalog + extraction + orders + dashboard into one 550-line file. Approaching the 700-line ceiling; consider splitting into routers/auth.py, routers/orders.py, services/extraction.py before growing further.",
+    "Login lockout keys on ip+email but the same key is reused when a valid password comes in AFTER a lockout was set; delete happens on success (good). However, wrong-password paths always extend locked_until by 15 min on every failure (rolling window), which is arguably desired but should be documented.",
+    "CORS currently defaults to '*' with allow_credentials=True which browsers actually ignore — fine for Bearer-token flow used here, but flag if cookie auth is ever added.",
+    "/api/orders/extract catches invalid JSON from the LLM by falling back to substring{...} parse; if the LLM returns text with no braces the order is saved with empty line_items and status='ready'. Consider returning a 502 in that case instead of a silent empty order.",
+    "Product update endpoint does not return 404 if company_id mismatches after matched_count==0 — currently handled correctly via composite filter. OK.",
+    "Dashboard.js does .catch(() => {}) silently on /dashboard/stats failure — user sees skeletons forever if the API errors. Show an error state.",
+    "Login.js hardcodes a demo credential hint in the UI ('demo@ordia.app / demo123'). Fine for demo, remove for production."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/__init__.py (empty, created for package)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all core E2E steps)"},
+  "test_credentials": "Demo: demo@ordia.app / demo123. Newly registered test companies use test_<uuid>@example.com / testpass123.",
+  "seed_data_creation": "Each test module registers ONE new company (test_<uuid>@example.com) and creates one seeded order via /api/orders/extract for downstream Orders/Dashboard classes. Under xdist loadscope with 2 workers, each worker registers its own company. Products created by CRUD test are cleaned up; seeded order and its parent company remain (multi-tenant, no cross-contamination).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py already migrated to pytest with xdist loadscope. Module-scoped `new_company` and `seeded_order` fixtures give each worker its own tenant + order so extraction results are available for both Orders and Dashboard suites. If image extraction test ever flakes on LLM latency, timeout is set to 120s. To rerun: `cd /app/backend && pytest tests/backend_test.py -v`. Frontend flow verified end-to-end using demo account. Ordia UI is Italian — rely on data-testid, not text.",
+  "rca of the issue": "No app bugs. Two test-file issues were fixed during this iteration: (1) initial register used @ordia.test which pydantic EmailStr rejects as reserved TLD — switched to @example.com; (2) TestOrders/TestDashboard originally relied on TestExtraction to seed an order but xdist loadscope splits classes across workers so the state didn't cross workers — introduced module-scoped seeded_order fixture that each worker builds independently."
+}
