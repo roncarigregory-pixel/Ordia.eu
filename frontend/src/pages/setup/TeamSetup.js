@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { SetupBack, Field, inputCls } from "./_shared";
@@ -20,8 +20,8 @@ export default function TeamSetup() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "operator" });
 
-  const load = () => api.get("/team").then(({ data }) => setMembers(data)).catch(() => setMembers([]));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/team").then(({ data }) => setMembers(data)).catch(() => setMembers([])), []);
+  useEffect(() => { load(); }, [load]);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 

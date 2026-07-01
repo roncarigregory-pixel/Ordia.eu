@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { SetupBack, Field, inputCls } from "./_shared";
@@ -12,13 +12,13 @@ export default function ErpSetup() {
   const [cfg, setCfg] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.get("/integrations/erp").then(({ data }) => setCfg({
+  const load = useCallback(() => api.get("/integrations/erp").then(({ data }) => setCfg({
     provider: data.provider || "webhook", format: data.format || "json",
     endpoint_url: data.endpoint_url || "", method: data.method || "POST",
     auth_header_name: data.auth_header_name || "", auth_header_value: data.auth_header_value || "",
     status: data.status || "not_configured", last_error: data.last_error,
-  })).catch(() => {});
-  useEffect(() => { load(); }, []);
+  })).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
 
   const set = (k) => (e) => setCfg({ ...cfg, [k]: e.target.value });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { SetupBack, Field, inputCls } from "./_shared";
@@ -18,14 +18,14 @@ export default function EmailSetup() {
   const [cfg, setCfg] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.get("/integrations/email").then(({ data }) => setCfg({
+  const load = useCallback(() => api.get("/integrations/email").then(({ data }) => setCfg({
     inbound_provider: data.inbound_provider || "forwarding",
     inbound_host: data.inbound_host || "", inbound_email: data.inbound_email || "", inbound_password: "",
     outbound_enabled: !!data.outbound_enabled, outbound_host: data.outbound_host || "",
     outbound_port: data.outbound_port || 587, outbound_email: data.outbound_email || "", outbound_password: "",
     status: data.status || "not_configured", forwarding_address: data.forwarding_address,
-  })).catch(() => {});
-  useEffect(() => { load(); }, []);
+  })).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
 
   const set = (k) => (e) => setCfg({ ...cfg, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 

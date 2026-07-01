@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,8 +17,8 @@ export default function Catalog() {
   const [form, setForm] = useState(EMPTY);
   const fileInput = useRef(null);
 
-  const load = () => api.get("/products").then(({ data }) => setProducts(data)).catch(() => setProducts([]));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/products").then(({ data }) => setProducts(data)).catch(() => setProducts([])), []);
+  useEffect(() => { load(); }, [load]);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = (p) => {

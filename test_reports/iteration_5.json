@@ -1,0 +1,28 @@
+{
+  "summary": "Regression verification after CORS security fix (allow_credentials=False + origins from CORS_ORIGINS env) and React useCallback hook-dependency fixes on 5 pages (Catalog, TeamSetup, EmailSetup, ErpSetup, LearningSetup). Backend: 13/13 pytest cases pass in /app/backend/tests/test_regression_iter5.py (17s). Covers: (a) auth still works with Bearer token — /api/auth/login returns access_token, /api/auth/me works with `Authorization: Bearer <tok>`, /api/products is 200 with token / 401-403 without; CORS preflight OPTIONS response does NOT set access-control-allow-credentials:true (confirms security fix); (b) all 5 refactored-page endpoints (/api/products, /api/team, /api/integrations/email, /api/integrations/erp, /api/learning) return 200 with expected shapes on the demo tenant; catalog+team CRUD (create→GET verify→delete) both work; (c) Milestone 2 regression — WhatsApp integration create + VERIFY handshake (challenge echoed) + RECEIVE text (orders_created:1) + idempotency on same message id (orders_created:0); email poll gating returns 400 before an integration is configured; (d) core pipeline regression — /api/orders/extract (source_type=text) creates order, /api/orders/{id}/validate persists, learning list is non-decreasing, CSV+JSON export both 200, /api/dashboard/stats 200. Frontend: Playwright verified pilot auto-login at '/' → Dashboard 'Centro di Comando' with kpi-total-orders visible (13 orders, 93% match precision), all 5 pages load their data on mount without JS errors (Catalog: 25 seeded products; Team: 3 members; Email/ERP/Learning: rendered without error), catalog add-product refreshed list from 25→26 items (confirms useCallback+load-on-mutation), delete cleanup worked, /login route still reachable in pilot mode. Zero pageerror/console-error events during the full UI run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_regression_iter5.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CORS: `allow_origins=os.environ.get('CORS_ORIGINS', '*').split(',')` — the default '*' is fine only because allow_credentials is False. For production, CORS_ORIGINS should be explicitly set to a comma-separated allowlist; document this in env docs/deployment notes (server.py:1467-1469).",
+    "server.py is now ~1490 lines — still recommended to split into modules (auth, catalog, orders, integrations/whatsapp, integrations/email, integrations/erp). Carried over from iteration 4, not addressed.",
+    "WhatsApp webhook still does not verify Meta's X-Hub-Signature-256 HMAC (carried over from iteration 4). HIGH before enabling real Meta creds in prod.",
+    "No unique compound Mongo index on (company_id, external_id) → concurrent webhook retries can double-insert (carried over from iteration 4).",
+    "In pilot mode the login page is still reachable but there is no visible indication (banner/toast) to users that the current session is a pilot/demo auto-login — minor UX polish."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_regression_iter5.py (new — 13 tests, 4 test classes covering CORS/auth, page data loads, milestone-2, and pipeline regression)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (7/7 UI checks incl. Catalog CRUD refresh)"},
+  "test_credentials": "Demo: demo@ordia.app / demo123 (from /app/memory/test_credentials.md). Fresh registrations use TEST_<hex>@example.com.",
+  "seed_data_creation": "None persisted — each run creates and deletes a TEST_ product, creates one TEST_ team member (not cleaned up — role changed to 'sales', harmless), creates one fresh @example.com tenant via register (for email-poll gating), and adds one WhatsApp integration + one text-source order on the demo tenant (harmless, matches iteration 4 pattern).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_regression_iter5.py is the CORS/hook-fix regression suite. It reads REACT_APP_BACKEND_URL from /app/frontend/.env directly (no need to export). The login response field is `access_token` (NOT `token` — the /app/memory/test_credentials.md doc is out of date on this and should be updated). WhatsApp integration schema requires `waba_id` (not `business_account_id`). Team member emails are lowercased on insert, so filter GET /team results by email.lower(). Use these facts when writing future backend tests.",
+  "rca of the issue": "No functional regressions found. Both fixes (CORS allow_credentials=False and useCallback wrapping on 5 pages) are backwards-compatible with the Bearer-token auth flow used by /app/frontend/src/lib/api.js (axios reads token from localStorage 'ordia_token' and injects Authorization header). All prior Milestone 1 & 2 acceptance criteria continue to hold."
+}

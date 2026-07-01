@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { SetupBack } from "./_shared";
@@ -9,8 +9,8 @@ export default function LearningSetup() {
   const [items, setItems] = useState(null);
   const [q, setQ] = useState("");
 
-  const load = () => api.get("/learning").then(({ data }) => setItems(data)).catch(() => setItems([]));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/learning").then(({ data }) => setItems(data)).catch(() => setItems([])), []);
+  useEffect(() => { load(); }, [load]);
 
   const remove = async (it) => {
     try { await api.delete(`/learning/${it.id}`); load(); toast.success("Regola rimossa"); }
