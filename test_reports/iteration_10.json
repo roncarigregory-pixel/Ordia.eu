@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 10 — Tested ONLY the new Notification Center + ERP connector platform (backend + frontend). All 16 pytest backend tests pass. All 5 frontend flows pass. Demo tenant cleaned (0 ERP connections remain).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_notifications_erp.py",
+    "/app/test_reports/pytest/iter10_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 2160 lines — the modularisation call-out from iteration 9 is even more urgent (orders, notifications, erp connectors, integrations, dashboard, email should each be their own module). Not blocking but hygienic.",
+    "ERP connection secret handling: PUT /api/erp/connections/{id} correctly re-uses the stored auth_token when the client sends a masked value (contains '•' or ends with '…'). Consider also treating empty/whitespace as 'keep' (already done via `not tok`).",
+    "ERP test endpoint always does a GET on base_url. For providers whose base_url only accepts POST (like httpbin/post), a GET will always 502. This is acceptable per spec ('may pass or 502 — both acceptable'), but a config-driven test method (e.g. HEAD, or POST with empty body) would make first-time UX friendlier.",
+    "generate_order_notifications relies on `is_new_customer` — verified working per this run (unique customer names trigger unknown_customer). Manual testing tip for future testers: use a timestamped customer name to guarantee it.",
+    "NotificationCenter.js polls every 20s — consider back-off when tab is not visible (document.visibilityState) to save API calls on the demo tenant."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_notifications_erp.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 pytest)",
+    "frontend": "100% (5/5: NotificationCenter render + filters + resolve/archive/assign + sidebar badge; ERP marketplace 6 connectors + config form + save + list + test/import/edit/delete + sync log table with retry buttons + delete cleanup)"
+  },
+  "test_credentials": "Pilot auto-login demo@ordia.app / demo123 (from /app/memory/test_credentials.md). ERP echo endpoint used: https://httpbin.org/post.",
+  "seed_data_creation": "Backend tests created a few disposable orders (customer names 'TESTCUST Iter10 <ts>', 'Bar Trattoria Roma', 'TESTChainCustomer Iter10') and left behind ~10 sync jobs in the demo tenant sync log — these are only historical logs and don't affect functionality. All ERP connections created (TEST_httpbin_iter10, TEST_bad_iter10, UI_TEST_erp_<ts>) were deleted at end of the run (verified: GET /api/erp/connections returns []).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 10 (Notification Center + ERP connector platform) is fully working. Suite: /app/backend/tests/test_iter10_notifications_erp.py — run with `REACT_APP_BACKEND_URL=<url> pytest -o addopts='' backend/tests/test_iter10_notifications_erp.py -v`. Notes: (1) /api/orders/extract expects multipart form-data, not JSON. (2) After validate, order status becomes 'validated' (not 'confirmed'/'exported'). (3) Advanced mapping textareas on ERP config live inside a closed <details> — playwright must open them with `document.querySelectorAll('details').forEach(d=>d.open=true)` before fill. (4) auth_token is masked (contains '•' or '…') on every read; PUT accepts masked value as 'keep existing'. (5) Only one connection can be active at a time — creating with active:true auto-deactivates others.",
+  "rca of the issue": "N/A — no bugs found. During test authoring, two minor test-side issues surfaced and were fixed by me: (a) initial assertion assumed order.status became 'confirmed'/'exported' after validate; actual value is 'validated' — assertion widened. (b) initial unknown_customer test used a fixed customer name that persisted across runs from prior iterations, so `is_new_customer` was False on subsequent runs — switched to timestamped unique customer name."
+}

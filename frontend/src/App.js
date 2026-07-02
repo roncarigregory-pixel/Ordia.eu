@@ -9,6 +9,7 @@ import Dashboard from "@/pages/Dashboard";
 import NewOrder from "@/pages/NewOrder";
 import Orders from "@/pages/Orders";
 import OrderReview from "@/pages/OrderReview";
+import NotificationCenter from "@/pages/NotificationCenter";
 import Customers from "@/pages/Customers";
 import CustomerDetail from "@/pages/CustomerDetail";
 import Catalog from "@/pages/Catalog";
@@ -48,6 +49,7 @@ function App() {
           <Route path="/app/new" element={<Protected><NewOrder /></Protected>} />
           <Route path="/app/orders" element={<Protected><Orders /></Protected>} />
           <Route path="/app/orders/:id" element={<Protected><OrderReview /></Protected>} />
+          <Route path="/app/notifications" element={<Protected><NotificationCenter /></Protected>} />
           <Route path="/app/customers" element={<Protected><Customers /></Protected>} />
           <Route path="/app/customers/:name" element={<Protected><CustomerDetail /></Protected>} />
           <Route path="/app/catalog" element={<Protected><Catalog /></Protected>} />

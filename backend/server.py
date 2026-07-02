@@ -501,20 +501,23 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
     extracted = await run_extraction(source_text, image_b64, products, learned)
     items = extracted["line_items"]
     review_count = sum(1 for i in items if i["needs_review"])
+    min_conf = min((i.get("confidence") or 0) for i in items) if items else 1.0
+    unmatched = [i for i in items if not i.get("matched_product_id")]
 
-    # Automation: auto-confirm high-confidence, fully-matched orders.
     autom = await get_automations(company_id)
+    is_new_customer = True
+    if extracted.get("customer_name"):
+        prev = await db.orders.find_one(
+            {"company_id": company_id, "customer_name": extracted["customer_name"]}, {"_id": 0, "id": 1})
+        is_new_customer = prev is None
+
     status = "needs_review" if review_count else "ready"
     auto_confirmed = False
     if autom["auto_confirm_enabled"] and items and review_count == 0:
         all_matched = all(i.get("matched_product_id") for i in items)
         conf_ok = all((i.get("confidence") or 0) >= autom["confidence_threshold"] for i in items)
-        is_new = False
-        if autom["hold_new_customers"] and extracted.get("customer_name"):
-            prev = await db.orders.find_one(
-                {"company_id": company_id, "customer_name": extracted["customer_name"]}, {"_id": 0, "id": 1})
-            is_new = prev is None
-        if all_matched and conf_ok and not is_new:
+        hold = autom["hold_new_customers"] and is_new_customer
+        if all_matched and conf_ok and not hold:
             status = "validated"
             auto_confirmed = True
 
@@ -535,6 +538,7 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
         "status": status,
         "auto_confirmed": auto_confirmed,
         "assigned_to": assigned_to,
+        "min_confidence": round(min_conf, 2),
         "created_at": now_iso(), "updated_at": now_iso(),
         "history": history,
     }
@@ -542,6 +546,10 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
     order.pop("_id", None)
     if auto_confirmed:
         await learn_from_order(company_id, order)
+    await generate_order_notifications(company_id, order, source_type, created_by,
+                                       min_conf, is_new_customer, unmatched, auto_confirmed)
+    if auto_confirmed:
+        await enqueue_erp_export(company_id, order)  # automation chain: export to ERP
     logger.info("Ingested order %s via %s (%d items, %d need review, auto_confirmed=%s)",
                 order["id"], source_type, len(items), review_count, auto_confirmed)
     return order
@@ -633,6 +641,10 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
                            "$push": {"history": history_entry("Ordine confermato", user["id"])}})
     order["status"] = "validated"
     await learn_from_order(user["company_id"], order)  # every confirmed line teaches Ordia
+    await enqueue_erp_export(user["company_id"], order)  # automation chain: export on confirm
+    await db.notifications.update_many(
+        {"company_id": user["company_id"], "order_id": order_id, "status": "open"},
+        {"$set": {"status": "resolved", "updated_at": now_iso()}})
     return order
 
 @api.get("/learning")
@@ -1774,6 +1786,353 @@ async def seed_demo_workspace():
 # ---------------------------------------------------------------------------
 # App wiring
 # ---------------------------------------------------------------------------
+# ============================================================================
+# NOTIFICATION CENTER
+# ============================================================================
+NOTIF_META = {
+    "order_blocked":         {"priority": "high",   "title": "Ordine bloccato",          "action": "Rivedi e correggi le righe"},
+    "low_confidence":        {"priority": "high",   "title": "Confidenza AI bassa",       "action": "Verifica gli articoli incerti"},
+    "unrecognized_products": {"priority": "high",   "title": "Prodotti non riconosciuti", "action": "Abbina o crea i prodotti"},
+    "erp_error":             {"priority": "high",   "title": "Errore ERP",                "action": "Riprova l'esportazione"},
+    "export_error":          {"priority": "high",   "title": "Errore esportazione",       "action": "Controlla e riprova"},
+    "unknown_customer":      {"priority": "medium", "title": "Cliente sconosciuto",       "action": "Associa o crea il cliente"},
+    "new_email":             {"priority": "medium", "title": "Nuova email ordine",        "action": "Apri l'ordine"},
+    "new_whatsapp":          {"priority": "medium", "title": "Nuovo WhatsApp",            "action": "Apri l'ordine"},
+    "new_pdf":               {"priority": "medium", "title": "Nuovo documento ricevuto",  "action": "Apri l'ordine"},
+    "customer_request":      {"priority": "medium", "title": "Richiesta cliente",         "action": "Rispondi al cliente"},
+    "auto_confirmed":        {"priority": "low",    "title": "Ordine auto-confermato",    "action": "Nessuna azione necessaria"},
+}
+
+async def create_notification(company_id, ntype, *, customer_name=None, order_id=None,
+                              detail="", assigned_to=None):
+    meta = NOTIF_META.get(ntype, {"priority": "medium", "title": ntype, "action": ""})
+    doc = {
+        "id": str(uuid.uuid4()), "company_id": company_id, "type": ntype,
+        "priority": meta["priority"], "title": meta["title"], "detail": detail,
+        "customer_name": customer_name, "order_id": order_id,
+        "suggested_action": meta["action"], "status": "open",
+        "assigned_to": assigned_to, "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.notifications.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+async def generate_order_notifications(company_id, order, source_type, created_by,
+                                       min_conf, is_new_customer, unmatched, auto_confirmed):
+    cust = order.get("customer_name")
+    oid = order["id"]
+    # Inbound channel events (only for orders received automatically, not manual uploads)
+    if created_by == "system":
+        src = {"email": "new_email", "whatsapp": "new_whatsapp"}.get(source_type, "new_pdf")
+        await create_notification(company_id, src, customer_name=cust, order_id=oid,
+                                  detail=f"{len(order['line_items'])} articoli")
+    if auto_confirmed:
+        await create_notification(company_id, "auto_confirmed", customer_name=cust, order_id=oid,
+                                  detail=f"Confidenza {int(min_conf * 100)}%")
+        return
+    if unmatched:
+        await create_notification(company_id, "unrecognized_products", customer_name=cust, order_id=oid,
+                                  detail=f"{len(unmatched)} articoli da abbinare",
+                                  assigned_to=order.get("assigned_to"))
+    if not cust or is_new_customer:
+        await create_notification(company_id, "unknown_customer", customer_name=cust, order_id=oid,
+                                  detail="Primo ordine di questo cliente" if cust else "Nessun cliente rilevato",
+                                  assigned_to=order.get("assigned_to"))
+    if order["status"] == "needs_review":
+        ntype = "low_confidence" if min_conf < 0.8 else "order_blocked"
+        await create_notification(company_id, ntype, customer_name=cust, order_id=oid,
+                                  detail=f"Confidenza minima {int(min_conf * 100)}%",
+                                  assigned_to=order.get("assigned_to"))
+
+class NotificationPatch(BaseModel):
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+@api.get("/notifications")
+async def list_notifications(status: Optional[str] = None, type: Optional[str] = None,
+                             q: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"company_id": user["company_id"]}
+    if status:
+        query["status"] = status
+    if type:
+        query["type"] = type
+    if q:
+        query["$or"] = [{"customer_name": {"$regex": q, "$options": "i"}},
+                        {"title": {"$regex": q, "$options": "i"}},
+                        {"detail": {"$regex": q, "$options": "i"}}]
+    order_rank = {"high": 0, "medium": 1, "low": 2}
+    items = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    items.sort(key=lambda n: (n["status"] != "open", order_rank.get(n["priority"], 3)))
+    return items
+
+@api.get("/notifications/counts")
+async def notification_counts(user: dict = Depends(get_current_user)):
+    pipeline = [{"$match": {"company_id": user["company_id"], "status": "open"}},
+                {"$group": {"_id": "$priority", "n": {"$sum": 1}}}]
+    agg = await db.notifications.aggregate(pipeline).to_list(10)
+    by_priority = {a["_id"]: a["n"] for a in agg}
+    return {"open": sum(by_priority.values()), "high": by_priority.get("high", 0),
+            "medium": by_priority.get("medium", 0), "low": by_priority.get("low", 0)}
+
+@api.patch("/notifications/{notif_id}")
+async def patch_notification(notif_id: str, body: NotificationPatch, user: dict = Depends(get_current_user)):
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    update["updated_at"] = now_iso()
+    res = await db.notifications.update_one(
+        {"id": notif_id, "company_id": user["company_id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notifica non trovata")
+    return await db.notifications.find_one({"id": notif_id}, {"_id": 0})
+
+# ============================================================================
+# ERP CONNECTOR PLATFORM (modular, plug-in)
+# ============================================================================
+CAPABILITIES = ["import_catalog", "import_customers", "export_orders", "sync_status", "sync_availability"]
+DEFAULT_MAPPINGS = {
+    "field_map": {}, "customer_map": {}, "product_map": {},
+    "unit_map": {}, "vat_map": {}, "warehouse_map": {}, "pricelist_map": {},
+}
+ERP_CONNECTORS = {
+    "generic":            {"name": "REST generico", "transport": "rest",   "capabilities": CAPABILITIES,
+                           "config_fields": ["base_url", "orders_endpoint", "catalog_endpoint", "customers_endpoint", "auth_header_name", "auth_token"]},
+    "odoo":               {"name": "Odoo",          "transport": "rest",   "capabilities": CAPABILITIES,
+                           "config_fields": ["base_url", "database", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+    "sap":                {"name": "SAP",           "transport": "rest",   "capabilities": ["import_catalog", "import_customers", "export_orders", "sync_status"],
+                           "config_fields": ["base_url", "company_db", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+    "business_central":   {"name": "Microsoft Business Central", "transport": "rest", "capabilities": CAPABILITIES,
+                           "config_fields": ["base_url", "tenant_id", "environment", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+    "zucchetti":          {"name": "Zucchetti",     "transport": "rest",   "capabilities": ["import_catalog", "import_customers", "export_orders"],
+                           "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+    "teamsystem":         {"name": "TeamSystem",    "transport": "rest",   "capabilities": ["import_catalog", "import_customers", "export_orders", "sync_status"],
+                           "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+}
+
+def _apply_mappings(payload: dict, mappings: dict) -> dict:
+    mappings = {**DEFAULT_MAPPINGS, **(mappings or {})}
+    fm = mappings["field_map"]
+    unit_map = mappings["unit_map"]
+    vat_map = mappings["vat_map"]
+    out = {fm.get(k, k): v for k, v in payload.items()}
+    lines_key = fm.get("lines", "lines")
+    if lines_key in out and isinstance(out[lines_key], list):
+        for ln in out[lines_key]:
+            if ln.get("unit") in unit_map:
+                ln["unit"] = unit_map[ln["unit"]]
+            if vat_map:
+                ln["vat"] = vat_map.get(ln.get("sku"), mappings.get("default_vat", 22))
+    return out
+
+def _mask_connection(conn: dict) -> dict:
+    conn = dict(conn)
+    cfg = dict(conn.get("config") or {})
+    if cfg.get("auth_token"):
+        cfg["auth_token"] = mask_secret(cfg["auth_token"])
+    conn["config"] = cfg
+    return conn
+
+async def erp_http_request(method: str, url: str, cfg: dict, payload=None):
+    if not url:
+        raise ValueError("Endpoint non configurato per questa operazione")
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("auth_header_name") and cfg.get("auth_token"):
+        headers[cfg["auth_header_name"]] = cfg["auth_token"]
+
+    def _do():
+        return requests.request(method, url, json=payload, headers=headers, timeout=20)
+    resp = await asyncio.to_thread(_do)
+    if resp.status_code >= 400:
+        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+    try:
+        return resp.json()
+    except Exception:
+        return {"status_code": resp.status_code}
+
+async def _run_export_job(job: dict, conn: dict, order: dict, company: dict):
+    cfg = conn.get("config") or {}
+    payload = _apply_mappings(standardize_order(order, company), conn.get("mappings"))
+    attempts = job.get("attempts", 0) + 1
+    try:
+        url = cfg.get("orders_endpoint") or cfg.get("base_url")
+        result = await erp_http_request("POST", url, cfg, payload)
+        await db.sync_jobs.update_one({"id": job["id"]}, {"$set": {
+            "status": "success", "attempts": attempts, "result": result,
+            "last_error": None, "updated_at": now_iso()}})
+        await db.orders.update_one({"id": order["id"]}, {"$push": {
+            "history": history_entry(f"Esportato su {conn['name']}", "erp")}})
+    except Exception as e:
+        await db.sync_jobs.update_one({"id": job["id"]}, {"$set": {
+            "status": "error", "attempts": attempts, "last_error": str(e)[:400], "updated_at": now_iso()}})
+        await create_notification(conn["company_id"], "erp_error", customer_name=order.get("customer_name"),
+                                  order_id=order["id"], detail=f"{conn['name']}: {str(e)[:120]}")
+        logger.warning("ERP export failed job=%s: %s", job["id"], e)
+
+async def enqueue_erp_export(company_id: str, order: dict):
+    """Automation chain step. The order is already persisted — a failed export never loses it."""
+    conn = await db.erp_connections.find_one({"company_id": company_id, "active": True}, {"_id": 0})
+    if not conn:
+        return None
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    job = {
+        "id": str(uuid.uuid4()), "company_id": company_id, "connection_id": conn["id"],
+        "connector_type": conn["connector_type"], "connector_name": conn["name"],
+        "order_id": order["id"], "customer_name": order.get("customer_name"),
+        "direction": "export_order", "status": "pending", "attempts": 0,
+        "last_error": None, "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.sync_jobs.insert_one(dict(job))
+    job.pop("_id", None)
+    await _run_export_job(job, conn, order, company)
+    return job
+
+class ErpConnectionBody(BaseModel):
+    connector_type: str
+    name: str
+    config: dict = {}
+    mappings: dict = {}
+    active: bool = True
+
+@api.get("/erp/connectors")
+async def list_connectors(user: dict = Depends(get_current_user)):
+    return [{"type": k, **v} for k, v in ERP_CONNECTORS.items()]
+
+@api.get("/erp/connections")
+async def list_connections(user: dict = Depends(get_current_user)):
+    items = await db.erp_connections.find({"company_id": user["company_id"]}, {"_id": 0}).to_list(100)
+    return [_mask_connection(c) for c in items]
+
+@api.post("/erp/connections")
+async def create_connection(body: ErpConnectionBody, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    if body.connector_type not in ERP_CONNECTORS:
+        raise HTTPException(status_code=400, detail="Connettore non supportato")
+    if body.active:
+        await db.erp_connections.update_many(
+            {"company_id": user["company_id"]}, {"$set": {"active": False}})
+    conn = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"],
+        "connector_type": body.connector_type, "name": body.name,
+        "config": body.config, "mappings": {**DEFAULT_MAPPINGS, **(body.mappings or {})},
+        "active": body.active, "status": "configured",
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.erp_connections.insert_one(dict(conn))
+    return _mask_connection({k: v for k, v in conn.items() if k != "_id"})
+
+@api.put("/erp/connections/{conn_id}")
+async def update_connection(conn_id: str, body: ErpConnectionBody, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    existing = await db.erp_connections.find_one({"id": conn_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Connessione non trovata")
+    cfg = dict(body.config or {})
+    tok = cfg.get("auth_token") or ""
+    if not tok or "•" in tok or tok.endswith("…"):  # keep stored secret if masked/empty
+        cfg["auth_token"] = (existing.get("config") or {}).get("auth_token")
+    if body.active:
+        await db.erp_connections.update_many(
+            {"company_id": user["company_id"], "id": {"$ne": conn_id}}, {"$set": {"active": False}})
+    await db.erp_connections.update_one({"id": conn_id}, {"$set": {
+        "name": body.name, "config": cfg, "mappings": {**DEFAULT_MAPPINGS, **(body.mappings or {})},
+        "active": body.active, "updated_at": now_iso()}})
+    doc = await db.erp_connections.find_one({"id": conn_id}, {"_id": 0})
+    return _mask_connection(doc)
+
+@api.delete("/erp/connections/{conn_id}")
+async def delete_connection(conn_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    await db.erp_connections.delete_one({"id": conn_id, "company_id": user["company_id"]})
+    return {"ok": True}
+
+@api.post("/erp/connections/{conn_id}/test")
+async def test_connection(conn_id: str, user: dict = Depends(get_current_user)):
+    conn = await db.erp_connections.find_one({"id": conn_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connessione non trovata")
+    cfg = conn.get("config") or {}
+    url = cfg.get("base_url") or cfg.get("orders_endpoint")
+    try:
+        await erp_http_request("GET", url, cfg)
+        await db.erp_connections.update_one({"id": conn_id}, {"$set": {"status": "connected"}})
+        return {"ok": True, "status": "connected"}
+    except Exception as e:
+        await db.erp_connections.update_one({"id": conn_id}, {"$set": {"status": "error"}})
+        raise HTTPException(status_code=502, detail=f"Connessione fallita: {str(e)[:180]}")
+
+@api.post("/erp/connections/{conn_id}/import")
+async def import_from_erp(conn_id: str, resource: str = "catalog", user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    conn = await db.erp_connections.find_one({"id": conn_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connessione non trovata")
+    cfg = conn.get("config") or {}
+    url = cfg.get("catalog_endpoint") if resource == "catalog" else cfg.get("customers_endpoint")
+    try:
+        data = await erp_http_request("GET", url, cfg)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Import non riuscito: {str(e)[:180]}")
+    rows = data if isinstance(data, list) else data.get("items", []) if isinstance(data, dict) else []
+    imported = 0
+    if resource == "catalog":
+        pmap = (conn.get("mappings") or {}).get("product_map") or {}
+        for r in rows:
+            sku = str(r.get(pmap.get("sku", "sku")) or "").strip()
+            if not sku:
+                continue
+            prod = {
+                "sku": sku, "name": r.get(pmap.get("name", "name")) or sku,
+                "category": r.get(pmap.get("category", "category")) or "General",
+                "unit": r.get(pmap.get("unit", "unit")) or "unità",
+                "price": float(r.get(pmap.get("price", "price")) or 0),
+                "aliases": [], "company_id": user["company_id"], "updated_at": now_iso(),
+            }
+            await db.products.update_one(
+                {"company_id": user["company_id"], "sku": sku},
+                {"$set": prod, "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now_iso()}}, upsert=True)
+            imported += 1
+    return {"ok": True, "resource": resource, "imported": imported}
+
+@api.post("/erp/connections/{conn_id}/sync-order/{order_id}")
+async def sync_order_manual(conn_id: str, order_id: str, user: dict = Depends(get_current_user)):
+    conn = await db.erp_connections.find_one({"id": conn_id, "company_id": user["company_id"]}, {"_id": 0})
+    order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not conn or not order:
+        raise HTTPException(status_code=404, detail="Connessione o ordine non trovati")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    job = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"], "connection_id": conn["id"],
+        "connector_type": conn["connector_type"], "connector_name": conn["name"],
+        "order_id": order_id, "customer_name": order.get("customer_name"),
+        "direction": "export_order", "status": "pending", "attempts": 0,
+        "last_error": None, "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.sync_jobs.insert_one(dict(job))
+    job.pop("_id", None)
+    await _run_export_job(job, conn, order, company)
+    return await db.sync_jobs.find_one({"id": job["id"]}, {"_id": 0})
+
+@api.get("/erp/jobs")
+async def list_sync_jobs(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"company_id": user["company_id"]}
+    if status:
+        query["status"] = status
+    return await db.sync_jobs.find(query, {"_id": 0}).sort("created_at", -1).to_list(300)
+
+@api.post("/erp/jobs/{job_id}/retry")
+async def retry_sync_job(job_id: str, user: dict = Depends(get_current_user)):
+    job = await db.sync_jobs.find_one({"id": job_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job non trovato")
+    conn = await db.erp_connections.find_one({"id": job["connection_id"]}, {"_id": 0})
+    order = await db.orders.find_one({"id": job["order_id"]}, {"_id": 0})
+    if not conn or not order:
+        raise HTTPException(status_code=400, detail="Connessione o ordine non più disponibili")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    await _run_export_job(job, conn, order, company)
+    return await db.sync_jobs.find_one({"id": job_id}, {"_id": 0})
+
+
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,

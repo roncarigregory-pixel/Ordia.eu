@@ -1,7 +1,9 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
 import { GlobalSearch } from "@/components/GlobalSearch";
-import { LayoutGrid, Inbox, Users, Package, Settings, LogOut, Plus } from "lucide-react";
+import { LayoutGrid, Inbox, Users, Package, Settings, LogOut, Plus, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LOGO = "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/c2366cbc5b415553f0e7a15df85e794d75397480b11ddc13c97ae35d53d7c3be.png";
@@ -9,6 +11,7 @@ const LOGO = "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-47
 const NAV = [
   { to: "/app", label: "Dashboard", short: "Home", icon: LayoutGrid, end: true, testid: "nav-dashboard" },
   { to: "/app/orders", label: "Ordini", short: "Ordini", icon: Inbox, testid: "nav-orders" },
+  { to: "/app/notifications", label: "Notifiche", short: "Avvisi", icon: Bell, testid: "nav-notifications" },
   { to: "/app/customers", label: "Clienti", short: "Clienti", icon: Users, testid: "nav-customers" },
   { to: "/app/catalog", label: "Catalogo", short: "Catalogo", icon: Package, testid: "nav-catalog" },
   { to: "/app/setup", label: "Configurazione", short: "Setup", icon: Settings, testid: "nav-setup" },
@@ -17,6 +20,14 @@ const NAV = [
 export function AppShell({ children }) {
   const { user, logout, pilotMode } = useAuth();
   const navigate = useNavigate();
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = () => api.get("/notifications/counts").then(({ data }) => setNotifCount(data.open || 0)).catch(() => {});
+    fetchCount();
+    const t = setInterval(fetchCount, 20000);
+    return () => clearInterval(t);
+  }, []);
 
   const initials = (user?.name || "U").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -60,6 +71,9 @@ export function AppShell({ children }) {
             >
               <item.icon size={19} />
               {item.label}
+              {item.to === "/app/notifications" && notifCount > 0 && (
+                <span data-testid="notif-badge" className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{notifCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -100,12 +114,15 @@ export function AppShell({ children }) {
               end={item.end}
               data-testid={`${item.testid}-mobile`}
               className={({ isActive }) =>
-                cn("flex flex-1 flex-col items-center gap-0.5 px-1 py-1 text-[10px] font-medium",
+                cn("relative flex flex-1 flex-col items-center gap-0.5 px-1 py-1 text-[10px] font-medium",
                   isActive ? "text-primary" : "text-muted-foreground")
               }
             >
               <item.icon size={20} />
               {item.short}
+              {item.to === "/app/notifications" && notifCount > 0 && (
+                <span className="absolute top-0 right-1/4 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{notifCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>
