@@ -256,8 +256,8 @@ export default function OrderReview() {
   const doExport = async (format) => {
     setExportOpen(false);
     await save();
-    const res = await fetch(`${API}/orders/${id}/export?format=${format}`, { credentials: "include" });
-    const blob = await res.blob();
+    const res = await api.get(`/orders/${id}/export?format=${format}`, { responseType: "blob" });
+    const blob = res.data;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const ext = format === "excel" ? "xlsx" : format;

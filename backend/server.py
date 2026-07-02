@@ -94,7 +94,7 @@ def create_access_token(user_id: str, company_id: str, email: str) -> str:
 
 def set_auth_cookie(response: Response, token: str):
     response.set_cookie(
-        key="ordia_token", value=token, httponly=True, secure=True, samesite="lax",
+        key="ordia_token", value=token, httponly=True, secure=True, samesite="none",
         max_age=TOKEN_TTL_DAYS * 24 * 3600, path="/")
 
 def clear_auth_cookie(response: Response):
