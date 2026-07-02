@@ -1,75 +1,61 @@
-# Ordia — Product Requirements & Build Log
+# Ordia — PRD & Progress
 
-## Original Problem Statement
-Ordia eliminates manual order entry. Companies rewrite orders arriving from WhatsApp, Email, PDFs,
-Excel, Images, Voice Messages and Phone Calls into ERP systems. Ordia extracts orders automatically;
-the operator only validates. Vision: the operating system for commercial order management.
-Core workflow: Receive → Understand → Extract → Validate → Learn → Export.
+## Prodotto
+Ordia è una piattaforma AI di automazione ordini per distributori all'ingrosso B2B.
+Riceve ordini da testo, WhatsApp, email, PDF, Excel, CSV, immagini e vocali, li estrae con
+Claude Sonnet 4.6, li abbina al catalogo prodotti e apprende dalle correzioni dell'operatore.
+UI e comunicazione con l'utente: **ITALIANO**. Benchmark UX: Stripe / Linear.
 
-## User Choices
-- Inputs: unified capture for text/WhatsApp, PDF, images, Excel/CSV (+ voice added in iteration 2).
-- AI model: Claude Sonnet 4.6 (via Emergent Universal LLM key).
-- Auth: JWT email/password, multi-tenant (company-scoped).
-- Export: CSV + JSON.
-- Catalog: pre-seeded realistic food-wholesale catalog, fully editable/replaceable.
-- Language: entire UI in Italian.
-- Pilot mode: default entry lands inside the product on a seeded demo workspace (login stays available).
+## Stack
+- Frontend: React + TailwindCSS + Shadcn UI + framer-motion + @dnd-kit + lucide-react
+- Backend: FastAPI + MongoDB (motor), JWT auth multi-tenant
+- AI: Claude Sonnet 4.6 (estrazione) + Whisper (audio) via Emergent LLM Key
+- Design system: navy #0B1E3B, ai-accent indigo #6366F1, font Satoshi/Manrope/JetBrains Mono
 
-## Architecture
-- Backend: FastAPI + MongoDB (Motor). Multi-tenant via `company_id` on every document. UUID string ids.
-- Auth: bcrypt + JWT Bearer tokens (7-day), brute-force lockout, seeded demo user.
-- Ingestion layer (single pipeline, swappable inputs): text | csv/xlsx (pandas) | pdf (pypdf) |
-  image (base64 → Claude vision) | audio (OpenAI Whisper whisper-1 → transcript).
-- Extraction: `run_extraction()` sends source + company catalog to Claude Sonnet 4.6, returns
-  normalized structured line items with catalog match + confidence + needs_review.
-- Frontend: React + Tailwind + shadcn/ui, Satoshi/Geist typography, Phosphor icons, Swiss high-contrast design.
+## Ordine di priorità (deciso dall'utente): happy-path prima, poi rifinitura
+Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-ready.
 
-## Personas
-- Back-office / order-entry operator (primary): validates extracted orders fast.
-- Ops manager / owner: monitors throughput, hours saved, accuracy.
-- Sales rep: forwards customer messages to be turned into orders.
+## ✅ Completato
 
-## Implemented (2026-07-01)
-- JWT multi-tenant auth (register creates company + seeds catalog; login; me; lockout).
-- Product catalog: CRUD + CSV/Excel import; 25-item seeded food-wholesale catalog with aliases/packaging.
-- Unified New Order capture (paste text / drag-drop file) with staged extraction UI.
-- AI extraction for text, CSV/Excel, PDF, image, and VOICE (Whisper → Claude).
-- Order Review: source-vs-extraction split, editable line items, product re-match, add/remove, totals.
-- Validate + Export (CSV & JSON download).
-- Dashboard KPIs (hours saved, orders, needs-review, accuracy) + recent feed.
-- Italian UI throughout.
-- Pilot mode: root auto-enters seeded demo workspace; 5 realistic demo orders across statuses; `/login` reachable; toggle via REACT_APP_PILOT_MODE.
-- Tested: iteration_1 (16/16 backend, full E2E) and iteration_2 (pilot + voice + regression) — all pass.
+### P0 — Core Workflow (iteration_6, 100% pass)
+- **Nuovo Ordine** (`NewOrder.js`): 8 canali (Testo, WhatsApp, Email, PDF, Excel, CSV, Foto, Vocale),
+  drag & drop universale, stepper AI animato (framer-motion, 6 fasi).
+- **Estrazione AI** (`POST /api/orders/extract` → `ingest_order`/`run_extraction`): estrae cliente,
+  articoli, quantità; abbinamento catalogo + confidenza + learning loop.
+- **Revisione Ordine** (`OrderReview.js`): layout 2 colonne (sorgente originale sticky | tabella
+  editabile), ricerca prodotto combobox (`ProductSearch.js`), aggiungi/elimina/duplica/**riordina
+  (dnd-kit)**, suggerimenti AI, warning bassa confidenza, editing cliente/data, **cronologia modifiche**.
+- **Conferma** (`POST /api/orders/{id}/validate` → status validated + learning).
+- **Esportazione** (`GET /api/orders/{id}/export?format=`): **PDF (reportlab), Excel (openpyxl),
+  CSV, JSON** — bytes costruiti prima della mutazione stato; PDF con escaping HTML.
+- **Command Center** (`Dashboard.js` + `GET /api/command-center`): riepilogo in linguaggio naturale,
+  ordini da revisionare, attività recente, notifiche AI, clienti recenti — **dati reali**, niente KPI finti.
 
-## Backlog (prioritized)
-- P0: "Learning" loop — persist operator corrections as customer-specific aliases to auto-improve future matches.
-- P1: Real inbound email polling (IMAP fetch + attachment parsing) & WhatsApp production webhook subscription automation.
-- P1: Dedicated ERP connectors (SAP, Business Central, Zucchetti, TeamSystem, Oracle, Sage, Odoo, Dynamics) on top of ordia.order.v1.
-- P1: Email invites for team members (token link) + granular per-role permission enforcement in UI.
-- P2: Phone-call ingestion; per-customer price lists; analytics over time; multiple WhatsApp numbers per company UI.
-- P2: Split server.py into routers/services; encrypt stored access tokens at rest.
+### P1 — Search, Customers, Catalog, Mobile (iteration_7 + iteration_8, 100% pass)
+- **Ricerca globale** (`GlobalSearch.js` in `AppShell`, ⌘K + `GET /api/search`): clienti/ordini/prodotti.
+- **Clienti** (`Customers.js` + `CustomerDetail.js`, `GET /api/customers`, `/api/customers/{name}`):
+  griglia card, storico ordini, insight AI, prodotti abituali.
+- **Catalogo** (`Catalog.js`): CRUD prodotti + import CSV/Excel, design allineato.
+- **AppShell** ridisegnato: sidebar minimale (lucide), nav Clienti, ricerca integrata.
+- **Mobile**: bottom-nav dedicata, sollevata sopra il badge piattaforma (fix iteration_8).
 
-## Implemented — Iteration 3 (2026-07-01): Onboarding & Integrations
-- Setup hub (/app/setup) with live progress checklist (6 steps) and integration cards.
-- Guided WhatsApp Business wizard: prerequisites → credentials → real-time Graph API validation (activates on valid creds) → test message → done (webhook URL + verify token). Graceful, localized error hints + troubleshooting.
-- Email channel: inbound (forwarding address / Gmail / M365 / IMAP) + outbound SMTP, with real IMAP/SMTP validation.
-- ERP export layer: provider-based & ERP-agnostic (webhook/REST; JSON/CSV/XML) with standardized `ordia.order.v1` format, real "send sample order" test, and per-order push-to-ERP.
-- Team management with RBAC (owner/admin/sales/operator/warehouse/readonly); Company settings.
-- WhatsApp inbound webhook auto-creates draft orders via the extraction pipeline.
-- Tested: iteration_3 → 21/21 backend, full frontend E2E, all pass (1 minor ERP-save bug fixed).
+## 🔜 Prossimo — P2 (backlog)
+- **Notifiche outbound** (P2): invio automatico conferme/chiarimenti via email quando la confidenza
+  AI è bassa. ⚠️ RICHIEDE scelta provider email dall'utente (Resend / SendGrid) — BLOCCO tecnico reale.
+- **Connettori ERP avanzati** (P2): SAP, Odoo, Business Central sopra il layer export generico.
+- **AI Buyer Assistant** (P2): proposte di riordino, confronto fornitori.
+- **Automazioni** (P2): regole su ingestion (auto-conferma sopra soglia confidenza, routing).
 
-## Next Tasks
-- Milestone 3: dedicated ERP connector foundations (registry + mappers) on ordia.order.v1.
-- Milestone 4: outbound notifications (order confirmations + low-confidence clarification requests).
-- Turn off pilot mode (REACT_APP_PILOT_MODE=false) for real customer onboarding.
+## 🧹 Debito tecnico (non bloccante)
+- `server.py` ~1660 righe → splittare in `routers/`, `services/`, `models/`.
+- WhatsApp webhook: verifica HMAC X-Hub-Signature-256 prima di credenziali Meta reali.
+- Indice Mongo unico su (company_id, external_id) contro doppioni webhook.
 
-## Implemented — Milestone 2 (2026-07-01): Real inbound channels + unified pipeline
-- **Centralized pipeline core** `ingest_order()` — every channel (manual upload, email, WhatsApp, future plugins) flows through one function: Input → AI (Claude) → Catalog match → Learning loop → draft order. Idempotent by `external_id`; refactored extract_order + WhatsApp to use it.
-- **WhatsApp Business (real)**: webhook verify handshake; inbound receive of text, images and documents (media downloaded via Graph API); auto `subscribed_apps` on successful validation. Verified: Meta-style payload → order with matched line items + source_meta; idempotency; graceful media-failure (no 500s).
-- **Real IMAP polling**: connect Gmail/Outlook/IMAP, background poll loop (EMAIL_POLL_INTERVAL) + manual "Controlla ora la posta" endpoint; parses body + attachments (PDF/Excel/CSV/images) into orders; dedup by Message-ID; graceful auth failures. Forwarding-address mode supported.
-- Production-grade: logging, timeouts, retries via to_thread+wait_for, per-account error isolation, multi-tenant scoping, order external_id index.
-- Tested: iteration_4 → 12/12 backend + frontend, all pass. NOTE: real IMAP/WhatsApp accounts were not available, so live message delivery was validated via a genuine Meta webhook payload + graceful-failure/idempotency/gating tests.
+## Credenziali
+Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123 (pilot mode auto-login).
 
-## Implemented — Brand + Milestone 1 (2026-07-01)
-- **Brand: Ordia** (final). Domain chosen: **ordia.eu** (verified available via WHOIS EURid + RDAP; ordia.com is taken/aftermarket). Identity: evolved navy "O" ring mark, uppercase ORDIA wordmark (Satoshi), midnight-blue (#0B1E3B) + white theme, favicon (white O on navy tile), horizontal lockup asset. Demo login demo@ordia.app/demo123. (Note: briefly explored "Voxera" then reverted fully to Ordia.)
-- Milestone 1 — Learning Loop (P0): every validated order teaches Voxera. Confirmed line phrases persist as company-scoped learned aliases (`learned_aliases`), merged into the extraction catalog context AND applied as deterministic high-confidence overrides so the AI never repeats a matching mistake. New "Apprendimento" page (/app/setup/learning) to view/remove rules. Verified end-to-end via curl (unknown phrase → corrected → auto-matched at 0.97+ next time).
+## Test reports
+- iteration_6.json: P0 lifecycle (18/18 backend + frontend happy path)
+- iteration_7.json: P1 (desktop 100%, mobile bug trovato)
+- iteration_8.json: P1 mobile nav fix verificato (5/5)
+- Suite backend: `/app/backend/tests/test_p0_lifecycle.py`
