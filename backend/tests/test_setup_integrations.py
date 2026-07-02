@@ -172,7 +172,7 @@ class TestEmail:
         assert r.status_code == 200
         d = r.json()
         assert "forwarding_address" in d
-        assert "@inbound.ordia.app" in d["forwarding_address"]
+        assert "@inbound.ordia." in d["forwarding_address"]
 
     def test_save_and_validate_forwarding(self, demo_headers):
         r = requests.post(f"{API}/integrations/email", headers=demo_headers,

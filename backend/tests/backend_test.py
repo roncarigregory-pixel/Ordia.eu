@@ -109,7 +109,8 @@ class TestAuth:
         assert r.status_code in (401, 429), f"Got {r.status_code}: {r.text}"
 
     def test_me_requires_token(self, session):
-        r = session.get(f"{API}/auth/me")
+        # Use a bare request (no session cookie/header) — must be unauthenticated.
+        r = requests.get(f"{API}/auth/me")
         assert r.status_code == 401
 
     def test_register_duplicate_email_rejected(self, session, new_company):

@@ -256,8 +256,7 @@ export default function OrderReview() {
   const doExport = async (format) => {
     setExportOpen(false);
     await save();
-    const token = localStorage.getItem("ordia_token");
-    const res = await fetch(`${API}/orders/${id}/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API}/orders/${id}/export?format=${format}`, { credentials: "include" });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

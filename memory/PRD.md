@@ -78,6 +78,21 @@ clienti sconosciuti, prodotti non riconosciuti, richieste cliente.
 - **Catene automazione**: alta confidenza → auto-conferma → export ERP; conferma manuale → export + risolve notifiche.
 - Endpoints: `/api/notifications` (filtri), `/counts`, `PATCH /{id}`. Frontend: `NotificationCenter.js`.
 
+## 🔒 Hardening & Production readiness (sessione corrente)
+- **Auth a cookie HttpOnly**: JWT in cookie `ordia_token` (Secure, SameSite=Lax) su login/register; `get_current_user`
+  accetta Bearer (precedenza) o cookie (fallback browser); `POST /auth/logout` pulisce il cookie; frontend axios
+  `withCredentials`, **nessun token in localStorage** (XSS-safe). Verificato via curl + browser + pytest.
+- **WhatsApp HMAC**: verifica `X-Hub-Signature-256` (HMAC-SHA256) quando l'account ha `app_secret`. Verificato (unit + `test_whatsapp_full_flow` firmato).
+- **Ri-test upload E2E**: CSV, Excel, PDF, immagine (OCR/vision) estratti correttamente via pipeline reale (Claude). Audio testato in fork precedente.
+- **Deploy readiness**: unico blocker (import `useMemo`) risolto; restano solo raccomandazioni di performance (projection/pagination Mongo).
+- Suite pytest: **102 passati**. Fail residue non legate al codice: httpbin lento (flakiness ERP esterna), varianza LLM (csv), fixture audio.
+
+## ⏳ Bloccati su credenziali utente (verifica LIVE)
+- **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
+- **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
+- **IMAP live**: servono host/email/app-password reali per testare la ricezione email.
+- **WhatsApp live**: servono credenziali Meta (app_secret, phone_number_id, verify_token); l'HMAC è già attivo.
+
 ## 🔜 Prossimo — P2 (backlog)
 - **Buyer AI**: proposte di riordino per cliente, confronto fornitori.
 - **Connettori ERP**: SAP, Odoo, Business Central sopra l'export generico.

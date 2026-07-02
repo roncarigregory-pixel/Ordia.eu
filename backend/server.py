@@ -19,6 +19,8 @@ import re
 import json
 import uuid
 import base64
+import hashlib
+import hmac
 import asyncio
 import logging
 import secrets
@@ -40,7 +42,7 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors as rl_colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -90,9 +92,20 @@ def create_access_token(user_id: str, company_id: str, email: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+def set_auth_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="ordia_token", value=token, httponly=True, secure=True, samesite="lax",
+        max_age=TOKEN_TTL_DAYS * 24 * 3600, path="/")
+
+def clear_auth_cookie(response: Response):
+    response.delete_cookie(key="ordia_token", path="/")
+
 async def get_current_user(request: Request) -> dict:
+    # Explicit Authorization header wins; the HttpOnly cookie is the browser fallback.
     auth_header = request.headers.get("Authorization", "")
     token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+    if not token:
+        token = request.cookies.get("ordia_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -181,7 +194,7 @@ async def seed_company_catalog(company_id: str):
         await db.products.insert_many(docs)
 
 @api.post("/auth/register")
-async def register(body: RegisterBody):
+async def register(body: RegisterBody, response: Response):
     email = body.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -197,10 +210,11 @@ async def register(body: RegisterBody):
     await seed_company_catalog(company_id)
     token = create_access_token(user_id, company_id, email)
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    set_auth_cookie(response, token)
     return {"access_token": token, "user": user}
 
 @api.post("/auth/login")
-async def login(body: LoginBody, request: Request):
+async def login(body: LoginBody, request: Request, response: Response):
     email = body.email.lower()
     ip = request.client.host if request.client else "unknown"
     identifier = f"{ip}:{email}"
@@ -224,7 +238,13 @@ async def login(body: LoginBody, request: Request):
     await db.login_attempts.delete_one({"identifier": identifier})
     token = create_access_token(user["id"], user["company_id"], email)
     safe = {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
+    set_auth_cookie(response, token)
     return {"access_token": token, "user": safe}
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"ok": True}
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
@@ -1314,9 +1334,23 @@ async def _wa_source_from_message(msg: dict, acc: dict):
         return None, None, None
     return None, None, None
 
+def _verify_wa_signature(raw: bytes, header: str, app_secret: Optional[str]) -> bool:
+    """Verify Meta's X-Hub-Signature-256. If no app_secret configured, skip (dev only)."""
+    if not app_secret:
+        return True
+    if not header or not header.startswith("sha256="):
+        return False
+    expected = hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, header.split("=", 1)[1])
+
 @api.post("/webhooks/whatsapp")
 async def whatsapp_webhook_receive(request: Request):
-    payload = await request.json()
+    raw = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    try:
+        payload = json.loads(raw or b"{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
     created = 0
     try:
         for entry in payload.get("entry", []):
@@ -1325,6 +1359,9 @@ async def whatsapp_webhook_receive(request: Request):
                 pnid = value.get("metadata", {}).get("phone_number_id")
                 acc = await db.integrations.find_one({"type": "whatsapp", "phone_number_id": pnid}, {"_id": 0})
                 if not acc:
+                    continue
+                if not _verify_wa_signature(raw, signature, acc.get("app_secret")):
+                    logger.warning("WhatsApp signature verification FAILED for phone_number_id=%s", pnid)
                     continue
                 for msg in value.get("messages", []):
                     try:

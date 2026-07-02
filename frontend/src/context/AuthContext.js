@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
@@ -16,22 +16,18 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
 
   const loadUser = useCallback(async () => {
-    const token = localStorage.getItem("ordia_token");
-    if (token) {
-      try {
-        const { data } = await api.get("/auth/me");
-        setUser(data);
-        setReady(true);
-        return;
-      } catch {
-        localStorage.removeItem("ordia_token");
-      }
+    try {
+      const { data } = await api.get("/auth/me");
+      setUser(data);
+      setReady(true);
+      return;
+    } catch {
+      // no valid session cookie
     }
     // No valid session — in pilot mode auto-enter the demo workspace.
     if (PILOT_MODE) {
       try {
         const { data } = await api.post("/auth/login", { email: DEMO_EMAIL, password: DEMO_PASSWORD });
-        localStorage.setItem("ordia_token", data.access_token);
         setUser(data.user);
       } catch {
         setUser(false);
@@ -48,18 +44,16 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("ordia_token", data.access_token);
     setUser(data.user);
   };
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    localStorage.setItem("ordia_token", data.access_token);
     setUser(data.user);
   };
 
-  const logout = () => {
-    localStorage.removeItem("ordia_token");
+  const logout = async () => {
+    try { await api.post("/auth/logout"); } catch { /* ignore */ }
     setUser(false);
   };
 

@@ -179,7 +179,8 @@ class TestMilestone2Regression:
         assert v.status_code == 200
         assert v.text.strip('"') == "12345"
 
-        # RECEIVE text
+        # RECEIVE text (signed with the account's app_secret — Meta HMAC verification)
+        import hmac as _hmac, hashlib as _hashlib, json as _json
         msg_id = f"wamid.TEST_{uuid.uuid4().hex[:10]}"
         payload = {
             "entry": [{
@@ -196,12 +197,15 @@ class TestMilestone2Regression:
                 }]
             }]
         }
-        p1 = requests.post(f"{API}/webhooks/whatsapp", json=payload)
+        raw = _json.dumps(payload).encode()
+        sig = "sha256=" + _hmac.new(b"dummy_secret", raw, _hashlib.sha256).hexdigest()
+        hdrs = {"Content-Type": "application/json", "X-Hub-Signature-256": sig}
+        p1 = requests.post(f"{API}/webhooks/whatsapp", data=raw, headers=hdrs)
         assert p1.status_code == 200, p1.text
         assert p1.json().get("orders_created") == 1
 
         # Idempotency
-        p2 = requests.post(f"{API}/webhooks/whatsapp", json=payload)
+        p2 = requests.post(f"{API}/webhooks/whatsapp", data=raw, headers=hdrs)
         assert p2.status_code == 200
         assert p2.json().get("orders_created") == 0
 

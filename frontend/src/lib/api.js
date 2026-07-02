@@ -2,13 +2,9 @@ import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const api = axios.create({ baseURL: API });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("ordia_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// Auth uses an HttpOnly cookie set by the backend. `withCredentials` ensures the
+// cookie travels with every request. No token is persisted in localStorage (XSS-safe).
+export const api = axios.create({ baseURL: API, withCredentials: true });
 
 export function formatApiError(err) {
   const detail = err?.response?.data?.detail;
