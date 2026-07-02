@@ -22,8 +22,10 @@ import base64
 import hashlib
 import hmac
 import asyncio
+import time
 import logging
 import secrets
+from collections import defaultdict, deque
 import tempfile
 import smtplib
 import imaplib
@@ -75,6 +77,49 @@ if RESEND_API_KEY:
 
 app = FastAPI(title="Ordia API", version="1.0.0")
 api = APIRouter(prefix="/api")
+
+# ---------------------------------------------------------------------------
+# Rate limiting (in-memory sliding window) — protects PUBLIC webhook endpoints
+# from abuse/floods without adding external infra. Per-IP, generous ceiling so
+# legitimate provider traffic (Meta) is never blocked.
+# ---------------------------------------------------------------------------
+_RATE_BUCKETS: dict = defaultdict(deque)
+WEBHOOK_RATE_MAX = int(os.environ.get("WEBHOOK_RATE_LIMIT", "120"))  # requests
+WEBHOOK_RATE_WINDOW = int(os.environ.get("WEBHOOK_RATE_WINDOW", "60"))  # seconds
+
+def enforce_rate_limit(key: str, max_req: int = WEBHOOK_RATE_MAX, window: int = WEBHOOK_RATE_WINDOW):
+    now = time.monotonic()
+    bucket = _RATE_BUCKETS[key]
+    cutoff = now - window
+    while bucket and bucket[0] < cutoff:
+        bucket.popleft()
+    if len(bucket) >= max_req:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    bucket.append(now)
+
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+# ---------------------------------------------------------------------------
+# Health check (public) — for load balancers / deploy probes / uptime monitors
+# ---------------------------------------------------------------------------
+@api.get("/health")
+async def health():
+    db_ok = True
+    try:
+        await db.command("ping")
+    except Exception as e:
+        db_ok = False
+        logger.warning("Health check DB ping failed: %s", e)
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "service": "ordia-api",
+        "db": "up" if db_ok else "down",
+        "time": now_iso(),
+    }
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -626,9 +671,23 @@ async def extract_order(
     return order
 
 @api.get("/orders")
-async def list_orders(user: dict = Depends(get_current_user)):
-    orders = await db.orders.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return orders
+async def list_orders(
+    user: dict = Depends(get_current_user),
+    limit: int = 50,
+    skip: int = 0,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    limit = max(1, min(limit, 200))
+    skip = max(0, skip)
+    query: dict = {"company_id": user["company_id"]}
+    if status and status != "all":
+        query["status"] = status
+    if q:
+        query["customer_name"] = {"$regex": re.escape(q), "$options": "i"}
+    total = await db.orders.count_documents(query)
+    items = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"items": items, "total": total, "limit": limit, "skip": skip}
 
 @api.get("/orders/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
@@ -893,6 +952,56 @@ def _aggregate_customers(orders: List[dict]) -> List[dict]:
                        "favorite_products": [f[0] for f in fav], "products": None})
     result.sort(key=lambda x: x["last_order"] or "", reverse=True)
     return result
+
+@api.get("/analytics/roi")
+async def analytics_roi(user: dict = Depends(get_current_user)):
+    """ROI / impact metrics — quantifies the economic value Ordia delivers:
+    hours saved, estimated labour cost saved, automation rate, volume processed."""
+    cid = user["company_id"]
+    company = await db.companies.find_one({"id": cid}, {"_id": 0}) or {}
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    total = len(orders)
+    auto = sum(1 for o in orders if o.get("auto_confirmed"))
+    processed = sum(1 for o in orders if o["status"] in ("validated", "exported"))
+    lines = sum(len(o.get("line_items", [])) for o in orders)
+    confs = [i.get("confidence", 0) for o in orders for i in o.get("line_items", [])]
+    avg_conf = round(sum(confs) / len(confs) * 100) if confs else 0
+
+    minutes_per_line = float(os.environ.get("MINUTES_PER_LINE", "1.5"))
+    hourly_rate = float(os.environ.get("OPERATOR_HOURLY_RATE", "20"))
+    hours_saved = round(lines * minutes_per_line / 60, 1)
+    money_saved = round(hours_saved * hourly_rate, 2)
+    volume = round(sum(_order_total(o) for o in orders), 2)
+    automation_rate = round(auto / total * 100) if total else 0
+
+    today = datetime.now(timezone.utc).date()
+    week_start = today - timedelta(days=today.weekday())
+    trend = []
+    for w in range(7, -1, -1):
+        start = week_start - timedelta(days=7 * w)
+        end = start + timedelta(days=7)
+        s, e = start.isoformat(), end.isoformat()
+        cnt = sum(1 for o in orders if s <= (o.get("created_at") or "")[:10] < e)
+        trend.append({"week": s, "orders": cnt})
+
+    month_prefix = today.isoformat()[:7]
+    this_month = sum(1 for o in orders if (o.get("created_at") or "").startswith(month_prefix))
+
+    return {
+        "currency": company.get("currency", "EUR"),
+        "total_orders": total,
+        "orders_this_month": this_month,
+        "auto_confirmed": auto,
+        "automation_rate": automation_rate,
+        "processed": processed,
+        "lines_processed": lines,
+        "avg_confidence": avg_conf,
+        "hours_saved": hours_saved,
+        "money_saved": money_saved,
+        "hourly_rate": hourly_rate,
+        "volume_processed": volume,
+        "weekly_trend": trend,
+    }
 
 @api.get("/command-center")
 async def command_center(user: dict = Depends(get_current_user)):
@@ -1345,6 +1454,7 @@ def _verify_wa_signature(raw: bytes, header: str, app_secret: Optional[str]) -> 
 
 @api.post("/webhooks/whatsapp")
 async def whatsapp_webhook_receive(request: Request):
+    enforce_rate_limit(f"wa-webhook:{client_ip(request)}")
     raw = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
     try:

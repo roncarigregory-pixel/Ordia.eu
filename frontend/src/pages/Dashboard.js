@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sparkles, Plus, ArrowUpRight, Inbox, Bell, Users, AlertTriangle,
-  Lightbulb, GraduationCap, CircleCheck,
+  Lightbulb, GraduationCap, CircleCheck, Clock, Euro, Zap, TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,10 +20,12 @@ const NOTIF_TINT = {
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [roi, setRoi] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/command-center").then(({ data }) => setData(data)).catch(() => setData(false));
+    api.get("/analytics/roi").then(({ data }) => setRoi(data)).catch(() => setRoi(false));
   }, []);
 
   if (!data) {
@@ -71,6 +73,45 @@ export default function Dashboard() {
           </button>
         </div>
       </motion.div>
+
+      {/* ROI / Impact band — quantifies the value Ordia delivers */}
+      {roi && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          data-testid="roi-band"
+          className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
+          {[
+            { key: "hours", icon: Clock, tint: "bg-ai-soft text-ai",
+              label: "Ore risparmiate", value: `${(roi.hours_saved || 0).toLocaleString("it-IT")} h`,
+              sub: `${(roi.lines_processed || 0).toLocaleString("it-IT")} righe elaborate` },
+            { key: "money", icon: Euro, tint: "bg-emerald-50 text-emerald-600",
+              label: "Risparmio stimato", value: `€${(roi.money_saved || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
+              sub: `a €${roi.hourly_rate}/h di data entry` },
+            { key: "automation", icon: Zap, tint: "bg-amber-50 text-amber-600",
+              label: "Tasso di automazione", value: `${roi.automation_rate || 0}%`,
+              sub: `${(roi.auto_confirmed || 0).toLocaleString("it-IT")} confermati in automatico` },
+            { key: "volume", icon: TrendingUp, tint: "bg-indigo-50 text-indigo-600",
+              label: "Volume processato", value: `€${(roi.volume_processed || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
+              sub: `${(roi.orders_this_month || 0).toLocaleString("it-IT")} ordini questo mese` },
+          ].map((m) => (
+            <div
+              key={m.key}
+              data-testid={`roi-${m.key}`}
+              className="rounded-xl border border-border bg-white p-4 transition-shadow hover:shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", m.tint)}>
+                  <m.icon size={16} />
+                </span>
+                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+              </div>
+              <p data-testid={`roi-${m.key}-value`} className="mt-3 font-display text-2xl font-bold tracking-tight tabular-nums">{m.value}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.sub}</p>
+            </div>
+          ))}
+        </motion.div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left column */}

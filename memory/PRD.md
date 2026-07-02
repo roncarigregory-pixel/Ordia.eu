@@ -95,6 +95,17 @@ clienti sconosciuti, prodotti non riconosciuti, richieste cliente.
   CORS ok, load_dotenv ok, query Mongo con limiti. Deploy da avviare dal pulsante piattaforma.
 - ⚠️ PILOT_MODE attivo (auto-login demo). Per produzione con login reale: `REACT_APP_PILOT_MODE=false`.
 
+## ✅ Lavori autonomi CTO — alto impatto (2026-07-02)
+Regola rispettata: nessuna modifica al flow principale né a login/deploy/email/WhatsApp/IMAP.
+- **Dashboard ROI**: nuovo `GET /api/analytics/roi` (ore risparmiate, risparmio € stimato, tasso automazione,
+  volume processato, avg confidence, trend 8 settimane). Banda 4-card in `Dashboard.js`. Verificato curl + UI.
+- **Rate-limit webhook pubblici**: sliding-window in-memory per-IP su `POST /api/webhooks/whatsapp`
+  (120 req/60s, configurabile via `WEBHOOK_RATE_LIMIT`/`WEBHOOK_RATE_WINDOW`). Verificato: 120 pass / 60 → 429.
+- **Paginazione lista ordini**: `GET /api/orders?limit&skip&status&q` → `{items,total,limit,skip}` con filtro/ricerca
+  server-side. `Orders.js` con controlli pagina + debounce ricerca. Verificato: pag.2 = 26–42/42.
+- **Health endpoint**: `GET /api/health` pubblico (ping Mongo) per probe deploy/uptime. Verificato: `{status:ok,db:up}`.
+- ⏸️ Refactor `server.py`: RIMANDATO (rischio rottura flow) — da fare in sessione dedicata con testing_agent.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.

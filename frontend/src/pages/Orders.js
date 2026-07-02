@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, ChevronRight } from "lucide-react";
+import { Plus, Search, ChevronRight, ChevronLeft } from "lucide-react";
 
 const FILTERS = [
   { key: "all", label: "Tutti" },
@@ -13,21 +13,40 @@ const FILTERS = [
   { key: "exported", label: "Esportati" },
 ];
 
+const PAGE_SIZE = 25;
+
 export default function Orders() {
-  const [orders, setOrders] = useState(null);
+  const [data, setData] = useState(null); // { items, total, limit, skip }
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [page, setPage] = useState(0);
   const navigate = useNavigate();
 
+  // Debounce the search input to avoid a request on every keystroke.
   useEffect(() => {
-    api.get("/orders").then(({ data }) => setOrders(data)).catch(() => setOrders([]));
-  }, []);
+    const t = setTimeout(() => setDebouncedQ(q), 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
-  const filtered = (orders || []).filter((o) => {
-    if (filter !== "all" && o.status !== filter) return false;
-    if (q && !(o.customer_name || "").toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
+  // Reset to first page whenever filter/search changes.
+  useEffect(() => { setPage(0); }, [filter, debouncedQ]);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .get("/orders", { params: { limit: PAGE_SIZE, skip: page * PAGE_SIZE, status: filter, q: debouncedQ } })
+      .then(({ data }) => setData(data))
+      .catch(() => setData({ items: [], total: 0, limit: PAGE_SIZE, skip: 0 }))
+      .finally(() => setLoading(false));
+  }, [filter, debouncedQ, page]);
+
+  const items = data?.items || [];
+  const total = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const to = Math.min(total, page * PAGE_SIZE + items.length);
 
   return (
     <div className="animate-fade-up">
@@ -71,11 +90,11 @@ export default function Orders() {
       </div>
 
       <div className="rounded-xl border border-border bg-white overflow-hidden">
-        {!orders ? (
+        {loading && !data ? (
           <div className="p-4 space-y-3">
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-md" />)}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="p-16 text-center text-sm text-muted-foreground">Nessun ordine trovato.</div>
         ) : (
           <table className="w-full text-sm">
@@ -89,7 +108,7 @@ export default function Orders() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((o) => (
+              {items.map((o) => (
                 <tr
                   key={o.id}
                   data-testid={`order-row-${o.id}`}
@@ -107,6 +126,31 @@ export default function Orders() {
           </table>
         )}
       </div>
+
+      {total > 0 && (
+        <div data-testid="orders-pagination" className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <span data-testid="orders-range">{from}–{to} di {total} ordini</span>
+          <div className="flex items-center gap-2">
+            <button
+              data-testid="orders-prev-page"
+              disabled={page === 0 || loading}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 font-medium text-foreground transition-colors hover:bg-secondary/50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={15} /> Precedente
+            </button>
+            <span data-testid="orders-page-indicator" className="tabular-nums">Pagina {page + 1} di {totalPages}</span>
+            <button
+              data-testid="orders-next-page"
+              disabled={page + 1 >= totalPages || loading}
+              onClick={() => setPage((p) => p + 1)}
+              className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 font-medium text-foreground transition-colors hover:bg-secondary/50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Successiva <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
