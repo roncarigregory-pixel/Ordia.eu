@@ -11,7 +11,7 @@ BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") if os.environ.get("RE
     else "https://intelligent-orders-1.preview.emergentagent.com"
 
 DEMO_EMAIL = "demo@ordia.app"
-DEMO_PASSWORD = "demo123"
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo123")
 
 EXPECTED_CUSTOMERS = {
     "Trattoria Sole", "Hotel Aurora", "Bar Centrale",

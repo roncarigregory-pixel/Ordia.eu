@@ -154,7 +154,7 @@ export default function Dashboard() {
                 {notifications.map((n, i) => {
                   const Icon = NOTIF_ICON[n.type] || Sparkles;
                   return (
-                    <div key={i} data-testid={`notification-${i}`} className="flex items-start gap-3 rounded-lg bg-secondary/50 p-3">
+                    <div key={`${n.type}-${i}`} data-testid={`notification-${i}`} className="flex items-start gap-3 rounded-lg bg-secondary/50 p-3">
                       <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", NOTIF_TINT[n.type] || "bg-ai-soft text-ai")}>
                         <Icon size={15} />
                       </span>

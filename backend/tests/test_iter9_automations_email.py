@@ -16,7 +16,7 @@ import requests
 
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 DEMO_EMAIL = "demo@ordia.app"
-DEMO_PASSWORD = "demo123"
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo123")
 TEST_RECIPIENT = "delivered@resend.dev"
 
 DEFAULTS = {

@@ -87,7 +87,7 @@ export default function CustomerDetail() {
             </div>
             <ul className="space-y-2.5">
               {insights.map((t, i) => (
-                <li key={i} data-testid={`insight-${i}`} className="flex items-start gap-2 text-sm text-slate-700">
+                <li key={t} data-testid={`insight-${i}`} className="flex items-start gap-2 text-sm text-slate-700">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ai" /> {t}
                 </li>
               ))}

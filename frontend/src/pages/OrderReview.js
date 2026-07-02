@@ -338,7 +338,7 @@ export default function OrderReview() {
         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mb-4 overflow-hidden rounded-xl border border-border bg-white">
           <div className="divide-y divide-border" data-testid="history-panel">
             {(order.history || []).slice().reverse().map((h, i) => (
-              <div key={i} className="flex items-center justify-between px-4 py-2.5 text-sm">
+              <div key={`${h.ts}-${i}`} className="flex items-center justify-between px-4 py-2.5 text-sm">
                 <span className="font-medium">{h.action}{h.detail ? <span className="text-muted-foreground font-normal"> · {h.detail}</span> : null}</span>
                 <span className="font-mono text-xs text-muted-foreground">{new Date(h.ts).toLocaleString("it-IT")}</span>
               </div>

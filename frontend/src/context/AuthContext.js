@@ -63,8 +63,13 @@ export function AuthProvider({ children }) {
     setUser(false);
   };
 
+  const value = useMemo(
+    () => ({ user, ready, login, register, logout, pilotMode: PILOT_MODE }),
+    [user, ready]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, ready, login, register, logout, pilotMode: PILOT_MODE }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

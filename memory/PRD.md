@@ -59,6 +59,25 @@ Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-r
   ⚠️ TEST MODE: invii reali solo verso l'email dell'account Resend / `delivered@resend.dev`.
   Per la produzione: verificare un dominio su Resend e impostare `SENDER_EMAIL` sul dominio verificato.
 
+## ✅ Enterprise Integrations — ERP Platform (P1) — verificata iter_10 (16/16 BE + 5/5 FE)
+Architettura ERP-first **modulare a plug-in**, sopra il formato standard `ordia.order.v1`.
+- Registry connettori: `generic`, `odoo`, `sap`, `business_central`, `zucchetti`, `teamsystem`
+  (transport REST configurabile — endpoint reali quando configurati, nessun finto successo).
+- Connessioni per-azienda con **mapping** (campi/prodotti/unità/IVA/magazzini/listini) e stato.
+- **Coda sync con retry** (`sync_jobs`): export falliti restano in coda, ordine MAI perso, log dettagliati.
+- Import catalogo/clienti via endpoint configurati; export automatico su conferma (catena automazione).
+- Endpoints: `/api/erp/connectors`, `/api/erp/connections` (CRUD), `/test`, `/import`, `/sync-order/{id}`,
+  `/erp/jobs`, `/erp/jobs/{id}/retry`. Frontend: `ErpSetup.js` (marketplace + config dinamica + mapping + log).
+
+## ✅ Notification Center (P1) — verificata iter_10
+Centro operativo in tempo reale (polling 20s). Notifiche generate da eventi reali del pipeline:
+ordini bloccati, confidenza bassa, auto-confermati, nuove email/WhatsApp/PDF, errori ERP/export,
+clienti sconosciuti, prodotti non riconosciuti, richieste cliente.
+- Ogni notifica: priorità (alta/media/bassa), cliente, orario, azione consigliata, azioni rapide.
+- Filtri (stato/tipo/ricerca), assegna/archivia/risolvi, apri ordine. Badge conteggio in sidebar.
+- **Catene automazione**: alta confidenza → auto-conferma → export ERP; conferma manuale → export + risolve notifiche.
+- Endpoints: `/api/notifications` (filtri), `/counts`, `PATCH /{id}`. Frontend: `NotificationCenter.js`.
+
 ## 🔜 Prossimo — P2 (backlog)
 - **Buyer AI**: proposte di riordino per cliente, confronto fornitori.
 - **Connettori ERP**: SAP, Odoo, Business Central sopra l'export generico.
