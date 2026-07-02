@@ -40,11 +40,15 @@ Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-r
 - **Mobile**: bottom-nav dedicata, sollevata sopra il badge piattaforma (fix iteration_8).
 
 ## 🔜 Prossimo — P2 (backlog)
-- **Notifiche outbound** (P2): invio automatico conferme/chiarimenti via email quando la confidenza
-  AI è bassa. ⚠️ RICHIEDE scelta provider email dall'utente (Resend / SendGrid) — BLOCCO tecnico reale.
+- **Automazioni** ✅ FATTO (verificato via curl + UI): conferma automatica ordini con tutti gli
+  articoli abbinati e confidenza ≥ soglia (default 90%), opzione "trattieni nuovi clienti".
+  Backend: `GET/PUT /api/automations`, logica in `ingest_order` (campo `auto_confirmed`, cronologia
+  "Confermato automaticamente"). Frontend: `setup/AutomationSetup.js` (switch + slider), card in Setup hub.
+- **Notifiche outbound** (P2, provider scelto: **Resend**): ⏳ IN ATTESA della `RESEND_API_KEY` dall'utente.
+  Playbook pronto: env `RESEND_API_KEY` + `SENDER_EMAIL`, invio async via `asyncio.to_thread(resend.Emails.send)`.
+  Invio automatico conferme ordine / richieste chiarimento quando confidenza bassa.
 - **Connettori ERP avanzati** (P2): SAP, Odoo, Business Central sopra il layer export generico.
 - **AI Buyer Assistant** (P2): proposte di riordino, confronto fornitori.
-- **Automazioni** (P2): regole su ingestion (auto-conferma sopra soglia confidenza, routing).
 
 ## 🧹 Debito tecnico (non bloccante)
 - `server.py` ~1660 righe → splittare in `routers/`, `services/`, `models/`.

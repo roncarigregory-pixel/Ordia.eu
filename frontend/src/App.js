@@ -19,6 +19,7 @@ import ErpSetup from "@/pages/setup/ErpSetup";
 import TeamSetup from "@/pages/setup/TeamSetup";
 import CompanySetup from "@/pages/setup/CompanySetup";
 import LearningSetup from "@/pages/setup/LearningSetup";
+import AutomationSetup from "@/pages/setup/AutomationSetup";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -57,6 +58,7 @@ function App() {
           <Route path="/app/setup/team" element={<Protected><TeamSetup /></Protected>} />
           <Route path="/app/setup/company" element={<Protected><CompanySetup /></Protected>} />
           <Route path="/app/setup/learning" element={<Protected><LearningSetup /></Protected>} />
+          <Route path="/app/setup/automations" element={<Protected><AutomationSetup /></Protected>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </BrowserRouter>

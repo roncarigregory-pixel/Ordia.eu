@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  WhatsappLogo, EnvelopeSimple, Package, Plugs, UsersThree, Buildings, Brain,
+  WhatsappLogo, EnvelopeSimple, Package, Plugs, UsersThree, Buildings, Brain, Lightning,
   CheckCircle, CaretRight, Circle,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const CARDS = [
   { key: "company", to: "/app/setup/company", icon: Buildings, title: "Dati azienda", desc: "Ragione sociale, P.IVA, valuta e recapiti." },
   { key: "catalog", to: "/app/catalog", icon: Package, title: "Catalogo prodotti", desc: "Prodotti, alias e formati per l'abbinamento AI." },
+  { key: "automations", to: "/app/setup/automations", icon: Lightning, title: "Automazioni", desc: "Conferma automatica degli ordini ad alta confidenza." },
   { key: "whatsapp", to: "/app/setup/whatsapp", icon: WhatsappLogo, title: "WhatsApp Business", desc: "Ricevi ordini direttamente dai tuoi clienti." },
   { key: "email", to: "/app/setup/email", icon: EnvelopeSimple, title: "Email", desc: "Casella dedicata o la tua email aziendale." },
   { key: "erp", to: "/app/setup/erp", icon: Plugs, title: "Export ERP", desc: "Webhook, REST, JSON, CSV, XML — ERP-agnostico." },

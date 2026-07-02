@@ -464,6 +464,17 @@ async def run_extraction(source_text: Optional[str], image_b64: Optional[str], p
 # ---------------------------------------------------------------------------
 # Order endpoints
 # ---------------------------------------------------------------------------
+DEFAULT_AUTOMATIONS = {
+    "auto_confirm_enabled": False,
+    "confidence_threshold": 0.9,
+    "hold_new_customers": True,
+}
+
+async def get_automations(company_id: str) -> dict:
+    c = await db.companies.find_one({"id": company_id}, {"_id": 0, "settings": 1})
+    a = (c or {}).get("settings", {}).get("automations", {})
+    return {**DEFAULT_AUTOMATIONS, **a}
+
 async def ingest_order(company_id: str, source_type: str, source_preview: str,
                        source_text: Optional[str] = None, image_b64: Optional[str] = None,
                        created_by: str = "system", external_id: Optional[str] = None,
@@ -480,21 +491,46 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
     products = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(2000)
     learned = await get_learned_aliases(company_id)
     extracted = await run_extraction(source_text, image_b64, products, learned)
-    review_count = sum(1 for i in extracted["line_items"] if i["needs_review"])
+    items = extracted["line_items"]
+    review_count = sum(1 for i in items if i["needs_review"])
+
+    # Automation: auto-confirm high-confidence, fully-matched orders.
+    autom = await get_automations(company_id)
+    status = "needs_review" if review_count else "ready"
+    auto_confirmed = False
+    if autom["auto_confirm_enabled"] and items and review_count == 0:
+        all_matched = all(i.get("matched_product_id") for i in items)
+        conf_ok = all((i.get("confidence") or 0) >= autom["confidence_threshold"] for i in items)
+        is_new = False
+        if autom["hold_new_customers"] and extracted.get("customer_name"):
+            prev = await db.orders.find_one(
+                {"company_id": company_id, "customer_name": extracted["customer_name"]}, {"_id": 0, "id": 1})
+            is_new = prev is None
+        if all_matched and conf_ok and not is_new:
+            status = "validated"
+            auto_confirmed = True
+
+    history = [history_entry("Ordine estratto", created_by, f"Fonte: {source_type}")]
+    if auto_confirmed:
+        history.append(history_entry("Confermato automaticamente", "automation",
+                                     f"Confidenza ≥ {int(autom['confidence_threshold'] * 100)}%"))
     order = {
         "id": str(uuid.uuid4()), "company_id": company_id, "created_by": created_by,
         "source_type": source_type, "source_preview": (source_preview or "")[:5000],
         "external_id": external_id, "source_meta": source_meta or {},
         "customer_name": extracted["customer_name"], "delivery_date": extracted["delivery_date"],
-        "notes": extracted["notes"], "line_items": extracted["line_items"],
-        "status": "needs_review" if review_count else "ready",
+        "notes": extracted["notes"], "line_items": items,
+        "status": status,
+        "auto_confirmed": auto_confirmed,
         "created_at": now_iso(), "updated_at": now_iso(),
-        "history": [history_entry("Ordine estratto", created_by, f"Fonte: {source_type}")],
+        "history": history,
     }
     await db.orders.insert_one(dict(order))
     order.pop("_id", None)
-    logger.info("Ingested order %s via %s (%d items, %d need review)",
-                order["id"], source_type, len(extracted["line_items"]), review_count)
+    if auto_confirmed:
+        await learn_from_order(company_id, order)
+    logger.info("Ingested order %s via %s (%d items, %d need review, auto_confirmed=%s)",
+                order["id"], source_type, len(items), review_count, auto_confirmed)
     return order
 
 @api.post("/orders/extract")
@@ -841,6 +877,22 @@ class TeamMemberCreate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: str
+
+class AutomationSettings(BaseModel):
+    auto_confirm_enabled: bool = False
+    confidence_threshold: float = Field(0.9, ge=0.5, le=1.0)
+    hold_new_customers: bool = True
+
+@api.get("/automations")
+async def get_automations_ep(user: dict = Depends(get_current_user)):
+    return await get_automations(user["company_id"])
+
+@api.put("/automations")
+async def update_automations_ep(body: AutomationSettings, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    await db.companies.update_one(
+        {"id": user["company_id"]}, {"$set": {"settings.automations": body.model_dump()}})
+    return await get_automations(user["company_id"])
 
 @api.get("/company")
 async def get_company(user: dict = Depends(get_current_user)):
