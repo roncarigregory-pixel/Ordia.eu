@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Check, X } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { Search, Check, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function ProductSearch({ products, value, onSelect, invalid, testid }) {
+export function ProductSearch({ products, value, onSelect, onCreate, invalid, testid }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef(null);
@@ -24,6 +24,8 @@ export function ProductSearch({ products, value, onSelect, invalid, testid }) {
       : products;
     return list.slice(0, 40);
   }, [q, products]);
+
+  const exactMatch = products.some((p) => p.name.toLowerCase() === q.trim().toLowerCase());
 
   return (
     <div className="relative" ref={ref}>
@@ -79,6 +81,15 @@ export function ProductSearch({ products, value, onSelect, invalid, testid }) {
                 {p.id === value && <Check size={15} className="text-primary" />}
               </button>
             ))}
+            {onCreate && q.trim() && !exactMatch && (
+              <button
+                data-testid={`${testid}-create`}
+                onClick={() => { onCreate(q.trim()); setOpen(false); }}
+                className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-border px-3 py-2.5 text-left text-ai hover:bg-ai-soft"
+              >
+                <Plus size={15} /> <span className="text-sm font-medium">Crea nuovo prodotto «{q.trim()}»</span>
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 9 — Tested ONLY the NEW features requested: Automations (auto-confirm + routing), Email send via Resend (confirmation+clarification), manual assignment, Scansione channel, and inline product creation from OrderReview. All backend flows (8/8 pytest) and all frontend flows (5/5) pass. Automations restored to defaults on the demo tenant.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AutomationSetup (/app/setup/automations)", "issues": ["React hydration warning in console: '<span> cannot be a child of <option>' — a decorator <span> is being injected into <option> elements of routing-user-select. Functional but noisy in console; the <option> renders in AutomationSetup.js line ~148 wrapping `{m.name}`. Consider inlining plain text or fixing the injected span so React doesn't warn."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_automations_email.py",
+    "/app/test_reports/pytest/iter9_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1801 lines — approaching the 700-line threshold called out in code review guidelines; should be modularised (orders, automations, email, team, dashboard). Not blocking iteration 9.",
+    "OrderReview.js has grown to 478 lines and mixes list rendering, DnD, product-create, email dialog, assignee, export menu; a small refactor (extract EmailDialog, ExportMenu, AssigneeSelect) would help maintainability.",
+    "Non-issue but worth noting: /api/auth/login returns `access_token` (not `token`), and the frontend correctly stores it — tests need to read `access_token`. Consistent with backend."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_automations_email.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 pytest)",
+    "frontend": "100% (5/5: Scansione channel, Automations page toggles+routing+save, Order assignee save, Email send confirmation+clarification, Inline product create)"
+  },
+  "test_credentials": "Pilot auto-login demo@ordia.app / demo123 (from /app/memory/test_credentials.md). Resend test recipient: delivered@resend.dev.",
+  "seed_data_creation": "Created a few disposable products via inline product creation (name TESTPROD_<epoch>). These stay in demo catalog but are visibly marked NEW-XXXX and can be cleaned up by main agent. Also created and deleted a few test orders during backend tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iteration 9 features are all working. Backend suite: /app/backend/tests/test_iter9_automations_email.py (run with `REACT_APP_BACKEND_URL=<url> pytest -o addopts='' backend/tests/test_iter9_automations_email.py -v`). Route trap noticed: /app/new (NOT /app/orders/new) is the NewOrder page; /app/orders/:id is OrderReview. Email flow: only delivered@resend.dev works (Resend TEST mode) — treat 403 on other recipients as expected. After every test that flips automations, automations reset to defaults confirmed via `GET /api/automations`.",
+  "rca of the issue": "N/A — no bugs found for iteration 9 features. One hydration warning in AutomationSetup <option> children (visual editor injects <span>); non-blocking, listed under design_issues."
+}

@@ -13,9 +13,10 @@ import { toast } from "sonner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProductSearch } from "@/components/ProductSearch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, CheckCircle2, Trash2, Copy, Plus, Download, AlertTriangle,
-  FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon,
+  FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ function suggestProducts(raw, products) {
   return scored.slice(0, 3).map((x) => x.p);
 }
 
-function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove }) {
+function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, onCreate }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: it.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : "auto" };
   const suggestions = !it.matched_product_id ? suggestProducts(it.raw_text, products) : [];
@@ -95,6 +96,7 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove })
                 invalid={!it.matched_product_id}
                 testid={`match-select-${it.id}`}
                 onSelect={(pid) => onMatch(it.id, pid)}
+                onCreate={(name) => onCreate(it.id, name)}
               />
             </div>
             <input
@@ -141,15 +143,21 @@ export default function OrderReview() {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [products, setProducts] = useState([]);
+  const [team, setTeam] = useState([]);
   const [saving, setSaving] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [emailDlg, setEmailDlg] = useState({ open: false, kind: "confirmation" });
+  const [recipient, setRecipient] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [sending, setSending] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const load = useCallback(async () => {
-    const [o, p] = await Promise.all([api.get(`/orders/${id}`), api.get("/products")]);
+    const [o, p, t] = await Promise.all([api.get(`/orders/${id}`), api.get("/products"), api.get("/team").catch(() => ({ data: [] }))]);
     setOrder(o.data);
     setProducts(p.data);
+    setTeam(t.data);
   }, [id]);
 
   useEffect(() => { load().catch(() => toast.error("Impossibile caricare l'ordine")); }, [load]);
@@ -164,6 +172,24 @@ export default function OrderReview() {
   };
 
   const onRemove = (itemId) => setItems((items) => items.filter((it) => it.id !== itemId));
+
+  const onCreateProduct = async (itemId, name) => {
+    const item = order.line_items.find((i) => i.id === itemId);
+    const sku = `NEW-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    try {
+      const { data: p } = await api.post("/products", {
+        sku, name, category: "General", unit: item?.unit || "unità", pack_size: "", price: 0, aliases: [],
+      });
+      setProducts((prev) => [...prev, p]);
+      onUpdate(itemId, {
+        matched_product_id: p.id, matched_sku: p.sku, matched_name: p.name,
+        price: p.price, unit: p.unit || "unità", needs_review: false, confidence: 1,
+      });
+      toast.success(`Prodotto «${name}» creato e abbinato`);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
   const onDuplicate = (itemId) => setItems((items) => {
     const idx = items.findIndex((it) => it.id === itemId);
     const copy = { ...items[idx], id: crypto.randomUUID() };
@@ -188,7 +214,7 @@ export default function OrderReview() {
     try {
       const { data } = await api.put(`/orders/${id}`, {
         customer_name: order.customer_name, delivery_date: order.delivery_date,
-        notes: order.notes, line_items: order.line_items,
+        notes: order.notes, line_items: order.line_items, assigned_to: order.assigned_to,
       });
       setOrder(data);
       toast.success("Modifiche salvate");
@@ -197,6 +223,25 @@ export default function OrderReview() {
       toast.error(formatApiError(err));
       return false;
     } finally { setSaving(false); }
+  };
+
+  const openEmail = (kind) => {
+    setExportOpen(false);
+    setEmailDlg({ open: true, kind });
+    setEmailMsg("");
+  };
+
+  const sendEmail = async () => {
+    if (!recipient.trim()) return toast.error("Inserisci un'email destinatario.");
+    setSending(true);
+    try {
+      await api.post(`/orders/${id}/send-email`, { recipient_email: recipient.trim(), message: emailMsg, kind: emailDlg.kind });
+      toast.success(emailDlg.kind === "clarification" ? "Richiesta di chiarimento inviata" : "Email di conferma inviata");
+      setEmailDlg({ open: false, kind: "confirmation" });
+      load();
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally { setSending(false); }
   };
 
   const validate = async () => {
@@ -272,9 +317,21 @@ export default function OrderReview() {
             />
           </div>
         </div>
-        <button data-testid="toggle-history" onClick={() => setShowHistory((s) => !s)} className="flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <History size={15} /> Cronologia <ChevronDown size={14} className={cn("transition-transform", showHistory && "rotate-180")} />
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            data-testid="assignee-select"
+            value={order.assigned_to || ""}
+            onChange={(e) => setOrder((p) => ({ ...p, assigned_to: e.target.value || null }))}
+            className="rounded-lg border border-input bg-white px-3 py-1.5 text-sm text-muted-foreground outline-none focus:ring-2 focus:ring-ring"
+            title="Assegnatario"
+          >
+            <option value="">Non assegnato</option>
+            {team.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
+          </select>
+          <button data-testid="toggle-history" onClick={() => setShowHistory((s) => !s)} className="flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <History size={15} /> Cronologia <ChevronDown size={14} className={cn("transition-transform", showHistory && "rotate-180")} />
+          </button>
+        </div>
       </div>
 
       {showHistory && (
@@ -320,7 +377,7 @@ export default function OrderReview() {
               <div className="space-y-3">
                 {order.line_items.map((it) => (
                   <SortableRow key={it.id} it={it} products={products}
-                    onMatch={onMatch} onUpdate={onUpdate} onDuplicate={onDuplicate} onRemove={onRemove} />
+                    onMatch={onMatch} onUpdate={onUpdate} onDuplicate={onDuplicate} onRemove={onRemove} onCreate={onCreateProduct} />
                 ))}
               </div>
             </SortableContext>
@@ -352,12 +409,19 @@ export default function OrderReview() {
               <Download size={16} /> Esporta <ChevronDown size={14} />
             </button>
             {exportOpen && (
-              <div data-testid="export-menu" className="absolute bottom-full right-0 mb-2 w-40 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+              <div data-testid="export-menu" className="absolute bottom-full right-0 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
                 {[["pdf", "PDF"], ["excel", "Excel"], ["csv", "CSV"], ["json", "JSON"]].map(([f, label]) => (
                   <button key={f} data-testid={`export-${f}-button`} onClick={() => doExport(f)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-secondary">
                     <Download size={14} className="text-muted-foreground" /> {label}
                   </button>
                 ))}
+                <div className="border-t border-border" />
+                <button data-testid="export-email-button" onClick={() => openEmail("confirmation")} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-secondary">
+                  <Mail size={14} className="text-muted-foreground" /> Email conferma (PDF)
+                </button>
+                <button data-testid="request-clarification-button" onClick={() => openEmail("clarification")} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-secondary">
+                  <MessageSquare size={14} className="text-ai" /> Richiedi chiarimenti
+                </button>
               </div>
             )}
           </div>
@@ -366,6 +430,49 @@ export default function OrderReview() {
           </button>
         </div>
       </div>
+
+      <Dialog open={emailDlg.open} onOpenChange={(o) => setEmailDlg((d) => ({ ...d, open: o }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-tight flex items-center gap-2">
+              {emailDlg.kind === "clarification" ? <><MessageSquare size={18} className="text-ai" /> Richiedi chiarimenti</> : <><Mail size={18} /> Invia conferma ordine</>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Email destinatario</label>
+              <input
+                data-testid="email-recipient-input"
+                type="email"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder="cliente@esempio.it"
+                className="mt-1.5 w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Messaggio (opzionale)</label>
+              <textarea
+                data-testid="email-message-input"
+                rows={3}
+                value={emailMsg}
+                onChange={(e) => setEmailMsg(e.target.value)}
+                placeholder={emailDlg.kind === "clarification" ? "Può confermare le quantità evidenziate?" : "Grazie per l'ordine!"}
+                className="mt-1.5 w-full resize-none rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            {emailDlg.kind === "confirmation" && (
+              <p className="text-xs text-muted-foreground">Verrà allegato il PDF dell'ordine.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <button onClick={() => setEmailDlg((d) => ({ ...d, open: false }))} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">Annulla</button>
+            <button data-testid="send-email-button" onClick={sendEmail} disabled={sending} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              {sending ? "Invio…" : "Invia email"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

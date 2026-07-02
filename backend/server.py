@@ -65,6 +65,11 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL_DAYS = 7
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+if RESEND_API_KEY:
+    import resend
+    resend.api_key = RESEND_API_KEY
 
 app = FastAPI(title="Ordia API", version="1.0.0")
 api = APIRouter(prefix="/api")
@@ -160,6 +165,7 @@ class OrderUpdate(BaseModel):
     notes: Optional[str] = None
     line_items: Optional[List[LineItem]] = None
     status: Optional[str] = None
+    assigned_to: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Auth endpoints
@@ -468,6 +474,8 @@ DEFAULT_AUTOMATIONS = {
     "auto_confirm_enabled": False,
     "confidence_threshold": 0.9,
     "hold_new_customers": True,
+    "routing_mode": "none",
+    "routing_user_id": None,
 }
 
 async def get_automations(company_id: str) -> dict:
@@ -514,6 +522,10 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
     if auto_confirmed:
         history.append(history_entry("Confermato automaticamente", "automation",
                                      f"Confidenza ≥ {int(autom['confidence_threshold'] * 100)}%"))
+    assigned_to = None
+    if status == "needs_review" and autom.get("routing_mode") == "user" and autom.get("routing_user_id"):
+        assigned_to = autom["routing_user_id"]
+        history.append(history_entry("Assegnato automaticamente", "automation"))
     order = {
         "id": str(uuid.uuid4()), "company_id": company_id, "created_by": created_by,
         "source_type": source_type, "source_preview": (source_preview or "")[:5000],
@@ -522,6 +534,7 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
         "notes": extracted["notes"], "line_items": items,
         "status": status,
         "auto_confirmed": auto_confirmed,
+        "assigned_to": assigned_to,
         "created_at": now_iso(), "updated_at": now_iso(),
         "history": history,
     }
@@ -638,6 +651,49 @@ async def delete_order(order_id: str, user: dict = Depends(get_current_user)):
     await db.orders.delete_one({"id": order_id, "company_id": user["company_id"]})
     return {"ok": True}
 
+def render_order_pdf(order: dict, order_id: str) -> bytes:
+    from xml.sax.saxutils import escape as _esc
+    rows = _order_rows(order)
+    total = round(sum(r["line_total"] for r in rows), 2)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=24 * mm,
+                            leftMargin=18 * mm, rightMargin=18 * mm, bottomMargin=18 * mm)
+    styles = getSampleStyleSheet()
+    navy = rl_colors.HexColor("#0B1E3B")
+    title_style = ParagraphStyle("t", parent=styles["Title"], textColor=navy, fontSize=20, spaceAfter=2)
+    meta_style = ParagraphStyle("m", parent=styles["Normal"], textColor=rl_colors.HexColor("#4B5563"), fontSize=9)
+    elements = [Paragraph("ORDIA", title_style),
+                Paragraph("Conferma d'ordine", ParagraphStyle("s", parent=styles["Normal"], fontSize=11, spaceAfter=10))]
+    elements.append(Paragraph(f"<b>Cliente:</b> {_esc(order.get('customer_name') or 'Cliente sconosciuto')}", meta_style))
+    elements.append(Paragraph(f"<b>Consegna:</b> {_esc(order.get('delivery_date') or '—')}", meta_style))
+    elements.append(Paragraph(f"<b>ID ordine:</b> {order_id[:8]}", meta_style))
+    elements.append(Spacer(1, 10))
+    data = [["SKU", "Prodotto", "Q.tà", "Unità", "Prezzo", "Totale"]]
+    for r in rows:
+        data.append([r["sku"], r["product"], str(r["quantity"]), r["unit"],
+                     f"€{r['unit_price']:.2f}", f"€{r['line_total']:.2f}"])
+    data.append(["", "", "", "", "Totale", f"€{total:.2f}"])
+    table = Table(data, colWidths=[55, 190, 40, 50, 55, 60], repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), navy),
+        ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -2), 0.4, rl_colors.HexColor("#E5E7EB")),
+        ("BACKGROUND", (0, -1), (-1, -1), rl_colors.HexColor("#F3F4F6")),
+        ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
+        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(table)
+    if order.get("notes"):
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph(f"<b>Note:</b> {_esc(order['notes'])}", meta_style))
+    doc.build(elements)
+    return buf.getvalue()
+
 @api.get("/orders/{order_id}/export")
 async def export_order(order_id: str, format: str = "json", user: dict = Depends(get_current_user)):
     from xml.sax.saxutils import escape as _esc
@@ -666,46 +722,7 @@ async def export_order(order_id: str, format: str = "json", user: dict = Depends
         ext = "xlsx"
 
     elif format == "pdf":
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=24 * mm,
-                                leftMargin=18 * mm, rightMargin=18 * mm, bottomMargin=18 * mm)
-        styles = getSampleStyleSheet()
-        navy = rl_colors.HexColor("#0B1E3B")
-        title_style = ParagraphStyle("t", parent=styles["Title"], textColor=navy, fontSize=20, spaceAfter=2)
-        meta_style = ParagraphStyle("m", parent=styles["Normal"], textColor=rl_colors.HexColor("#4B5563"), fontSize=9)
-        elements = [Paragraph("ORDIA", title_style),
-                    Paragraph("Conferma d'ordine", ParagraphStyle("s", parent=styles["Normal"], fontSize=11, spaceAfter=10))]
-        cust = _esc(order.get("customer_name") or "Cliente sconosciuto")
-        delivery = _esc(order.get("delivery_date") or "—")
-        elements.append(Paragraph(f"<b>Cliente:</b> {cust}", meta_style))
-        elements.append(Paragraph(f"<b>Consegna:</b> {delivery}", meta_style))
-        elements.append(Paragraph(f"<b>ID ordine:</b> {order_id[:8]}", meta_style))
-        elements.append(Spacer(1, 10))
-        data = [["SKU", "Prodotto", "Q.tà", "Unità", "Prezzo", "Totale"]]
-        for r in rows:
-            data.append([r["sku"], r["product"], str(r["quantity"]), r["unit"],
-                         f"€{r['unit_price']:.2f}", f"€{r['line_total']:.2f}"])
-        data.append(["", "", "", "", "Totale", f"€{total:.2f}"])
-        table = Table(data, colWidths=[55, 190, 40, 50, 55, 60], repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), navy),
-            ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -2), 0.4, rl_colors.HexColor("#E5E7EB")),
-            ("BACKGROUND", (0, -1), (-1, -1), rl_colors.HexColor("#F3F4F6")),
-            ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
-            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        elements.append(table)
-        if order.get("notes"):
-            elements.append(Spacer(1, 12))
-            elements.append(Paragraph(f"<b>Note:</b> {_esc(order['notes'])}", meta_style))
-        doc.build(elements)
-        content, media_type, ext = buf.getvalue(), "application/pdf", "pdf"
+        content, media_type, ext = render_order_pdf(order, order_id), "application/pdf", "pdf"
 
     else:
         payload = {
@@ -722,6 +739,80 @@ async def export_order(order_id: str, format: str = "json", user: dict = Depends
     return StreamingResponse(
         iter([content]), media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename={fname}.{ext}"})
+
+class SendEmailBody(BaseModel):
+    recipient_email: EmailStr
+    message: Optional[str] = ""
+    kind: str = "confirmation"  # confirmation | clarification
+
+def _email_rows_html(rows, uncertain_only=False, order=None):
+    trs = []
+    for i, r in enumerate(rows):
+        item = (order or {}).get("line_items", [])[i] if order else {}
+        if uncertain_only and not (item.get("needs_review") or (item.get("confidence") or 1) < 0.6):
+            continue
+        trs.append(
+            f'<tr><td style="padding:8px;border-bottom:1px solid #E5E7EB">{r["product"]}</td>'
+            f'<td style="padding:8px;border-bottom:1px solid #E5E7EB;text-align:right">{r["quantity"]} {r["unit"]}</td>'
+            f'<td style="padding:8px;border-bottom:1px solid #E5E7EB;text-align:right">€{r["line_total"]:.2f}</td></tr>')
+    return "".join(trs)
+
+def build_order_email(order, order_id, kind, message):
+    cust = order.get("customer_name") or "Cliente"
+    rows = _order_rows(order)
+    total = round(sum(r["line_total"] for r in rows), 2)
+    msg_block = f'<p style="margin:0 0 16px;color:#374151;line-height:1.5">{message}</p>' if message else ""
+    if kind == "clarification":
+        subject = f"Ordia · Richiesta di conferma ordine — {cust}"
+        intro = "Prima di procedere vorremmo confermare alcune righe del vostro ordine:"
+        body_rows = _email_rows_html(rows, uncertain_only=True, order=order) or _email_rows_html(rows, order=order)
+    else:
+        subject = f"Ordia · Conferma ordine — {cust}"
+        intro = "Grazie per il vostro ordine. Ecco il riepilogo:"
+        body_rows = _email_rows_html(rows, order=order)
+    html = f"""
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111827">
+  <div style="font-weight:bold;letter-spacing:3px;color:#0B1E3B;font-size:18px;margin-bottom:16px">ORDIA</div>
+  <p style="margin:0 0 8px;font-size:16px;font-weight:bold">Ciao {cust},</p>
+  <p style="margin:0 0 16px;color:#374151">{intro}</p>
+  {msg_block}
+  <table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid #E5E7EB;border-radius:8px">
+    <thead><tr style="background:#0B1E3B;color:#fff">
+      <th style="padding:8px;text-align:left">Prodotto</th>
+      <th style="padding:8px;text-align:right">Quantità</th>
+      <th style="padding:8px;text-align:right">Totale</th>
+    </tr></thead>
+    <tbody>{body_rows}</tbody>
+    <tfoot><tr><td style="padding:8px;font-weight:bold">Totale</td><td></td>
+      <td style="padding:8px;text-align:right;font-weight:bold">€{total:.2f}</td></tr></tfoot>
+  </table>
+  <p style="margin:20px 0 0;color:#6B7280;font-size:12px">Inviato automaticamente da Ordia · Ordine {order_id[:8]}</p>
+</div>"""
+    return subject, html
+
+@api.post("/orders/{order_id}/send-email")
+async def send_order_email(order_id: str, body: SendEmailBody, user: dict = Depends(get_current_user)):
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=400, detail="Integrazione email non configurata. Aggiungi RESEND_API_KEY.")
+    order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    subject, html = build_order_email(order, order_id, body.kind, body.message)
+    params = {"from": SENDER_EMAIL, "to": [body.recipient_email], "subject": subject, "html": html}
+    if body.kind == "confirmation":
+        pdf_b64 = base64.b64encode(render_order_pdf(order, order_id)).decode("utf-8")
+        params["attachments"] = [{"filename": f"ordine-{order_id[:8]}.pdf", "content": pdf_b64}]
+    try:
+        result = await asyncio.to_thread(resend.Emails.send, params)
+    except Exception as e:
+        logger.error("Resend send failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Invio email non riuscito: {e}")
+    label = "Chiarimento inviato" if body.kind == "clarification" else "Conferma inviata via email"
+    await db.orders.update_one(
+        {"id": order_id}, {"$set": {"updated_at": now_iso()},
+                           "$push": {"history": history_entry(label, user["id"], body.recipient_email)}})
+    return {"ok": True, "id": (result or {}).get("id"), "recipient": body.recipient_email}
+
 
 # ---------------------------------------------------------------------------
 # Dashboard
@@ -882,6 +973,8 @@ class AutomationSettings(BaseModel):
     auto_confirm_enabled: bool = False
     confidence_threshold: float = Field(0.9, ge=0.5, le=1.0)
     hold_new_customers: bool = True
+    routing_mode: str = "none"
+    routing_user_id: Optional[str] = None
 
 @api.get("/automations")
 async def get_automations_ep(user: dict = Depends(get_current_user)):

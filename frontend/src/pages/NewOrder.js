@@ -5,7 +5,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Type, MessageCircle, Mail, FileText, FileSpreadsheet, Sheet,
-  Image as ImageIcon, Mic, UploadCloud, Sparkles, ArrowRight, Check, Loader2,
+  Image as ImageIcon, Mic, ScanLine, UploadCloud, Sparkles, ArrowRight, Check, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,7 @@ const CHANNELS = [
   { id: "excel", label: "Excel", desc: ".xlsx / .xls", icon: Sheet, mode: "file", accept: ".xlsx,.xls" },
   { id: "csv", label: "CSV", desc: "Tabella dati", icon: FileSpreadsheet, mode: "file", accept: ".csv" },
   { id: "image", label: "Foto", desc: "Immagine ordine", icon: ImageIcon, mode: "file", accept: ".png,.jpg,.jpeg,.webp" },
+  { id: "scan", label: "Scansione", desc: "Scatta col telefono", icon: ScanLine, mode: "file", accept: "image/*", capture: true },
   { id: "audio", label: "Vocale", desc: "Messaggio audio", icon: Mic, mode: "file", accept: ".mp3,.m4a,.wav,.ogg,.webm,audio/*" },
 ];
 
@@ -222,6 +223,7 @@ export default function NewOrder() {
               type="file"
               data-testid="file-input"
               accept={channel.accept || ".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.wav,.ogg,.webm,audio/*"}
+              {...(channel.capture ? { capture: "environment" } : {})}
               className="hidden"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />

@@ -5,14 +5,16 @@ import { SetupBack } from "./_shared";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Zap, ShieldCheck, UserPlus } from "lucide-react";
+import { Zap, ShieldCheck, UserPlus, Route } from "lucide-react";
 
 export default function AutomationSetup() {
   const [cfg, setCfg] = useState(null);
+  const [team, setTeam] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get("/automations").then(({ data }) => setCfg(data)).catch(() => setCfg(false));
+    api.get("/team").then(({ data }) => setTeam(data)).catch(() => setTeam([]));
   }, []);
 
   const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
@@ -24,6 +26,8 @@ export default function AutomationSetup() {
         auto_confirm_enabled: cfg.auto_confirm_enabled,
         confidence_threshold: cfg.confidence_threshold,
         hold_new_customers: cfg.hold_new_customers,
+        routing_mode: cfg.routing_mode,
+        routing_user_id: cfg.routing_user_id,
       });
       setCfg(data);
       toast.success("Automazioni salvate");
@@ -111,6 +115,41 @@ export default function AutomationSetup() {
                 onCheckedChange={(v) => set({ hold_new_customers: v })}
               />
             </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Route size={20} className="mt-0.5 text-primary" />
+                <div>
+                  <p className="font-semibold">Routing automatico</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Assegna automaticamente gli ordini da revisionare a un membro del team.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                data-testid="routing-switch"
+                checked={cfg.routing_mode === "user"}
+                onCheckedChange={(v) => set({ routing_mode: v ? "user" : "none", routing_user_id: v ? cfg.routing_user_id : null })}
+              />
+            </div>
+            {cfg.routing_mode === "user" && (
+              <div className="mt-5 border-t border-border pt-5">
+                <label className="text-sm font-medium">Assegna a</label>
+                <select
+                  data-testid="routing-user-select"
+                  value={cfg.routing_user_id || ""}
+                  onChange={(e) => set({ routing_user_id: e.target.value || null })}
+                  className="mt-2 w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">— Seleziona un membro —</option>
+                  {team.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name} · {m.role}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">
