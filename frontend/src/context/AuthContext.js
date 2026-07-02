@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
 
   const loadUser = useCallback(async () => {
     try {
-      const { data } = await api.get("/auth/me");
+      const { data } = await api.get("/auth/me", { timeout: 12000 });
       setUser(data);
       setReady(true);
       return;
@@ -27,7 +27,11 @@ export function AuthProvider({ children }) {
     // No valid session — in pilot mode auto-enter the demo workspace.
     if (PILOT_MODE) {
       try {
-        const { data } = await api.post("/auth/login", { email: DEMO_EMAIL, password: DEMO_PASSWORD });
+        const { data } = await api.post(
+          "/auth/login",
+          { email: DEMO_EMAIL, password: DEMO_PASSWORD },
+          { timeout: 12000 }
+        );
         setUser(data.user);
       } catch {
         setUser(false);

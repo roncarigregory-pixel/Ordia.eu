@@ -22,9 +22,25 @@ import CompanySetup from "@/pages/setup/CompanySetup";
 import LearningSetup from "@/pages/setup/LearningSetup";
 import AutomationSetup from "@/pages/setup/AutomationSetup";
 
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4" data-testid="app-loading">
+      <img
+        src="https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/c2366cbc5b415553f0e7a15df85e794d75397480b11ddc13c97ae35d53d7c3be.png"
+        alt="Ordia"
+        className="h-12 w-12 rounded-xl object-contain animate-pulse"
+      />
+      <div className="h-1 w-32 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full w-1/2 rounded-full bg-primary animate-pulse" />
+      </div>
+      <p className="text-sm text-muted-foreground">Caricamento di Ordia…</p>
+    </div>
+  );
+}
+
 function Protected({ children }) {
   const { user, ready } = useAuth();
-  if (!ready) return <div className="min-h-screen bg-background" />;
+  if (!ready) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   return <AppShell>{children}</AppShell>;
 }

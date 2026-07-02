@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 11 — Targeted frontend regression for the reported 'La pagina home non si vede, è bianca' (blank home page) bug after auth-to-cookie migration. Verified in a FRESH browser context (cookies cleared) that the home page and dashboard render correctly. No blank page, no console errors, no pageerrors.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AuthContext.useMemo dependency array [user, ready] omits login/register/logout — those are stable closures over setUser only, so it's fine functionally but eslint react-hooks/exhaustive-deps would flag it. Non-blocking.",
+    "loadUser silently swallows both /auth/me and /auth/login errors (catch {}). If pilot auto-login ever starts failing (e.g. backend 500), the UI will just render the /login page with no user feedback. Consider surfacing a toast on the pilot-login failure path for debuggability.",
+    "server.py still at 2160+ lines (carried over from iter 10) — modularisation still recommended, not blocking."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only)", "frontend": "100% (5/5)" },
+  "test_credentials": "Pilot auto-login demo@ordia.app / demo123 (automatic, via /api/auth/login cookie).",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 11 verified only the blank-home-page fix. Playwright covered: (a) clear cookies + goto '/' → auto-redirects to /app, renders 'Centro di Comando' with dashboard body text (1514 chars) and full sidebar (Dashboard, Ordini, Notifiche+badge=35, Clienti, Catalogo, Configurazione); (b) /app renders (1514 chars); (c) /app/notifications renders (6879 chars, filters + notification cards visible); (d) /app/orders renders (2003 chars, orders table visible). ZERO console errors and ZERO pageerrors captured across all 5 navigations. Loading screen [data-testid=app-loading] was not caught (page loaded too fast in test env) — this is expected/harmless since final render is correct. The two initial 401s on /auth/me before pilot auto-login are expected as documented.",
+  "rca of the issue": "Root cause of the original bug per problem statement: (1) missing `useMemo` import in AuthContext.js caused a ReferenceError that crashed the AuthProvider before it could mount children; (2) even after that was fixed, the Protected route returned an empty <div/> while auth bootstrap was pending, showing a permanently blank page if bootstrap hung. Both fixes verified: `useMemo` is now imported on line 1 of AuthContext.js, and Protected returns <LoadingScreen data-testid='app-loading'> when !ready. Bootstrap safety: both /auth/me and pilot /auth/login now have 12s timeouts so `ready` can never stay false forever. Regression test in a fresh context confirms: dashboard renders in <6s with the expected Italian 'Centro di Comando · Oggi N ordini …' natural-language summary."
+}
