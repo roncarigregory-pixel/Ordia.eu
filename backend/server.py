@@ -35,6 +35,11 @@ import bcrypt
 import jwt
 import pandas as pd
 from pypdf import PdfReader
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib import colors as rl_colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -98,6 +103,22 @@ async def get_current_user(request: Request) -> dict:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+def history_entry(action: str, by: str = "system", detail: str = "") -> dict:
+    return {"ts": now_iso(), "action": action, "by": by, "detail": detail}
+
+def _order_rows(order: dict) -> List[dict]:
+    rows = []
+    for i in order.get("line_items", []):
+        rows.append({
+            "sku": i.get("matched_sku") or "",
+            "product": i.get("matched_name") or i.get("raw_text") or "",
+            "quantity": i.get("quantity"),
+            "unit": i.get("unit"),
+            "unit_price": round(i.get("price") or 0, 2),
+            "line_total": round((i.get("price") or 0) * (i.get("quantity") or 0), 2),
+        })
+    return rows
 
 # ---------------------------------------------------------------------------
 # Models
@@ -468,6 +489,7 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
         "notes": extracted["notes"], "line_items": extracted["line_items"],
         "status": "needs_review" if review_count else "ready",
         "created_at": now_iso(), "updated_at": now_iso(),
+        "history": [history_entry("Ordine estratto", created_by, f"Fonte: {source_type}")],
     }
     await db.orders.insert_one(dict(order))
     order.pop("_id", None)
@@ -545,7 +567,8 @@ async def update_order(order_id: str, body: OrderUpdate, user: dict = Depends(ge
         update["line_items"] = [dict(i) for i in update["line_items"]]
     update["updated_at"] = now_iso()
     res = await db.orders.update_one(
-        {"id": order_id, "company_id": user["company_id"]}, {"$set": update})
+        {"id": order_id, "company_id": user["company_id"]},
+        {"$set": update, "$push": {"history": history_entry("Modifiche salvate", user["id"])}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -557,7 +580,8 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     await db.orders.update_one(
-        {"id": order_id}, {"$set": {"status": "validated", "updated_at": now_iso()}})
+        {"id": order_id}, {"$set": {"status": "validated", "updated_at": now_iso()},
+                           "$push": {"history": history_entry("Ordine confermato", user["id"])}})
     order["status"] = "validated"
     await learn_from_order(user["company_id"], order)  # every confirmed line teaches Ordia
     return order
@@ -584,39 +608,87 @@ async def export_order(order_id: str, format: str = "json", user: dict = Depends
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     await db.orders.update_one(
-        {"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()}})
+        {"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()},
+                           "$push": {"history": history_entry(f"Esportato ({format.upper()})", user["id"])}})
+
+    rows = _order_rows(order)
+    total = round(sum(r["line_total"] for r in rows), 2)
+    fname = f"ordine-{order_id[:8]}"
 
     if format == "csv":
-        rows = []
-        for i in order["line_items"]:
-            rows.append({
-                "sku": i.get("matched_sku") or "", "product": i.get("matched_name") or i.get("raw_text"),
-                "quantity": i.get("quantity"), "unit": i.get("unit"),
-                "unit_price": i.get("price"), "line_total": round((i.get("price") or 0) * (i.get("quantity") or 0), 2),
-            })
         df = pd.DataFrame(rows)
         buf = io.StringIO()
         df.to_csv(buf, index=False)
         buf.seek(0)
         return StreamingResponse(
             iter([buf.getvalue()]), media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=order-{order_id[:8]}.csv"})
+            headers={"Content-Disposition": f"attachment; filename={fname}.csv"})
+
+    if format in ("xlsx", "excel"):
+        df = pd.DataFrame(rows)
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Ordine")
+        buf.seek(0)
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
+
+    if format == "pdf":
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=24 * mm,
+                                leftMargin=18 * mm, rightMargin=18 * mm, bottomMargin=18 * mm)
+        styles = getSampleStyleSheet()
+        navy = rl_colors.HexColor("#0B1E3B")
+        title_style = ParagraphStyle("t", parent=styles["Title"], textColor=navy, fontSize=20, spaceAfter=2)
+        meta_style = ParagraphStyle("m", parent=styles["Normal"], textColor=rl_colors.HexColor("#4B5563"), fontSize=9)
+        elements = [Paragraph("ORDIA", title_style),
+                    Paragraph("Conferma d'ordine", ParagraphStyle("s", parent=styles["Normal"], fontSize=11, spaceAfter=10))]
+        cust = order.get("customer_name") or "Cliente sconosciuto"
+        delivery = order.get("delivery_date") or "—"
+        elements.append(Paragraph(f"<b>Cliente:</b> {cust}", meta_style))
+        elements.append(Paragraph(f"<b>Consegna:</b> {delivery}", meta_style))
+        elements.append(Paragraph(f"<b>ID ordine:</b> {order_id[:8]}", meta_style))
+        elements.append(Spacer(1, 10))
+        data = [["SKU", "Prodotto", "Q.tà", "Unità", "Prezzo", "Totale"]]
+        for r in rows:
+            data.append([r["sku"], r["product"], str(r["quantity"]), r["unit"],
+                         f"€{r['unit_price']:.2f}", f"€{r['line_total']:.2f}"])
+        data.append(["", "", "", "", "Totale", f"€{total:.2f}"])
+        table = Table(data, colWidths=[55, 190, 40, 50, 55, 60], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), navy),
+            ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -2), 0.4, rl_colors.HexColor("#E5E7EB")),
+            ("BACKGROUND", (0, -1), (-1, -1), rl_colors.HexColor("#F3F4F6")),
+            ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(table)
+        if order.get("notes"):
+            elements.append(Spacer(1, 12))
+            elements.append(Paragraph(f"<b>Note:</b> {order['notes']}", meta_style))
+        doc.build(elements)
+        buf.seek(0)
+        return StreamingResponse(
+            iter([buf.getvalue()]), media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={fname}.pdf"})
 
     payload = {
         "order_id": order["id"], "customer_name": order.get("customer_name"),
         "delivery_date": order.get("delivery_date"), "notes": order.get("notes"),
-        "line_items": [
-            {"sku": i.get("matched_sku"), "product": i.get("matched_name") or i.get("raw_text"),
-             "quantity": i.get("quantity"), "unit": i.get("unit"),
-             "unit_price": i.get("price"),
-             "line_total": round((i.get("price") or 0) * (i.get("quantity") or 0), 2)}
-            for i in order["line_items"]
-        ],
+        "line_items": rows, "total": total,
     }
-    body = json.dumps(payload, indent=2)
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
     return StreamingResponse(
         iter([body]), media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename=order-{order_id[:8]}.json"})
+        headers={"Content-Disposition": f"attachment; filename={fname}.json"})
 
 # ---------------------------------------------------------------------------
 # Dashboard

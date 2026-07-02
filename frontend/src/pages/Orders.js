@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, MagnifyingGlass, CaretRight } from "@phosphor-icons/react";
+import { Plus, Search, ChevronRight } from "lucide-react";
 
 const FILTERS = [
   { key: "all", label: "Tutti" },
@@ -33,15 +33,15 @@ export default function Orders() {
     <div className="animate-fade-up">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="font-display text-4xl font-black tracking-tighter">Ordini</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Ordini</h1>
           <p className="mt-1 text-sm text-muted-foreground">Tutti gli ordini in arrivo, estratti e pronti da verificare.</p>
         </div>
         <button
           data-testid="orders-new-order"
           onClick={() => navigate("/app/new")}
-          className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
         >
-          <Plus size={18} weight="bold" /> Nuovo Ordine
+          <Plus size={18} /> Nuovo Ordine
         </button>
       </div>
 
@@ -59,18 +59,18 @@ export default function Orders() {
           ))}
         </div>
         <div className="relative flex-1 max-w-xs">
-          <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             data-testid="orders-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Cerca cliente…"
-            className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
 
-      <div className="rounded-md border border-border bg-white overflow-hidden">
+      <div className="rounded-xl border border-border bg-white overflow-hidden">
         {!orders ? (
           <div className="p-4 space-y-3">
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-md" />)}
@@ -100,7 +100,7 @@ export default function Orders() {
                   <td className="px-5 py-3 text-muted-foreground font-mono hidden sm:table-cell">{o.line_items.length}</td>
                   <td className="px-5 py-3 text-muted-foreground hidden md:table-cell capitalize">{o.source_type}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
-                  <td className="px-5 py-3 text-right"><CaretRight size={16} className="text-slate-300 inline" /></td>
+                  <td className="px-5 py-3 text-right"><ChevronRight size={16} className="text-slate-300 inline" /></td>
                 </tr>
               ))}
             </tbody>
