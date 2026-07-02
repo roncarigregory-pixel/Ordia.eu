@@ -121,6 +121,13 @@ Agente di riferimento: `/app/bridge_agent/agent.py` (pair/poll/deliver-simulato/
 Note: `enqueue` seleziona il primo agente paired+active dell'azienda (assunzione 1 agente/azienda per MVP; routing multi-agente = futuro).
 NON fatto (differito su richiesta): agente on-prem firmato + auto-update + relay WebSocket (ora è polling).
 
+## ✅ PoC RPA verificata (2026-07-02) — ordine creato in un ERP REALE
+Obiettivo utente: provare che il Bridge crea un ordine in un ERP reale via RPA (non solo formato).
+- Odoo 18 + PostgreSQL installati nel pod (DB `ordia`, dati demo, UI :8069). Danea/TeamSystem esclusi: desktop-only / licenza (nessun sandbox raggiungibile).
+- `bridge_agent/rpa_odoo.py` (Playwright): login UI → Sales New → cliente "Azure Interior" → righe Large Cabinet×2, Storage Box×5 → Salva. Solo mouse+tastiera.
+- Risultato: **ordine S00021 salvato**, verificato indipendentemente via API Odoo (totale €719, 2 righe). Screenshot in `bridge_agent/rpa_shots/`.
+- Conferma il braccio Class D (UI-only) dell'architettura ibrida. Lo stesso pattern connettore vale per TeamSystem/BC via API quando ci saranno le credenziali.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
