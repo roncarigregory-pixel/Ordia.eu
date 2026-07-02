@@ -106,6 +106,21 @@ Regola rispettata: nessuna modifica al flow principale né a login/deploy/email/
 - **Health endpoint**: `GET /api/health` pubblico (ping Mongo) per probe deploy/uptime. Verificato: `{status:ok,db:up}`.
 - ⏸️ Refactor `server.py`: RIMANDATO (rischio rottura flow) — da fare in sessione dedicata con testing_agent.
 
+## ✅ Ordia Bridge — Fase 1 (backbone cloud + AI Template Builder) — 2026-07-02
+Decisione prodotto: il Bridge è il pilastro core. Costruito e validato E2E in preview (nessun core toccato oltre 1 riga di hook).
+Backend (server.py, additivo prima di include_router):
+- **AI Template Builder**: `POST /api/export-profiles/analyze` (Claude Sonnet 4.6 deduce formato/colonne da 1 file d'esempio),
+  CRUD `/api/export-profiles`, renderer DETERMINISTICO `render_with_profile` (CSV/XLSX/XML), `GET /orders/{id}/export-profile/{pid}`.
+- **Bridge backbone**: `bridge_agents` (pairing code 6 cifre + token), `POST /api/bridge/agents|pair`, PUT/DELETE,
+  coda `delivery_jobs`, relay agente `GET /bridge/relay/poll` + `POST /bridge/relay/ack|heartbeat` (auth via header X-Bridge-Token),
+  `enqueue_bridge_delivery` agganciato a validate_order (1 riga), `GET /bridge/jobs`.
+- Notifiche `bridge_delivered` / `bridge_exception`. Indici Mongo aggiunti.
+Frontend: `pages/setup/BridgeSetup.js` (upload+analyze+approva profilo, crea/gestisci agenti con codice pairing, log consegne) + route + card in Configurazione.
+Agente di riferimento: `/app/bridge_agent/agent.py` (pair/poll/deliver-simulato/ack via HTTP; UA custom per bypassare CF 1010).
+**Test E2E (curl+agent reale) PASSATO**: crea agente→pairing→validate ordine→coda→agente preleva→consegna nel formato Danea (`;`+decimali`,`)→ack delivered→notifica "Consegnato in Danea". Template Builder ha mappato correttamente 6/6 colonne.
+Note: `enqueue` seleziona il primo agente paired+active dell'azienda (assunzione 1 agente/azienda per MVP; routing multi-agente = futuro).
+NON fatto (differito su richiesta): agente on-prem firmato + auto-update + relay WebSocket (ora è polling).
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.

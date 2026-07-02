@@ -721,6 +721,7 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
     order["status"] = "validated"
     await learn_from_order(user["company_id"], order)  # every confirmed line teaches Ordia
     await enqueue_erp_export(user["company_id"], order)  # automation chain: export on confirm
+    await enqueue_bridge_delivery(user["company_id"], order)  # Bridge: deliver into the ERP
     await db.notifications.update_many(
         {"company_id": user["company_id"], "order_id": order_id, "status": "open"},
         {"$set": {"status": "resolved", "updated_at": now_iso()}})
@@ -1948,6 +1949,8 @@ NOTIF_META = {
     "new_pdf":               {"priority": "medium", "title": "Nuovo documento ricevuto",  "action": "Apri l'ordine"},
     "customer_request":      {"priority": "medium", "title": "Richiesta cliente",         "action": "Rispondi al cliente"},
     "auto_confirmed":        {"priority": "low",    "title": "Ordine auto-confermato",    "action": "Nessuna azione necessaria"},
+    "bridge_delivered":      {"priority": "low",    "title": "Consegnato nel gestionale", "action": "Nessuna azione necessaria"},
+    "bridge_exception":      {"priority": "high",   "title": "Consegna Bridge fallita",   "action": "Rivedi e riprova la consegna"},
 }
 
 async def create_notification(company_id, ntype, *, customer_name=None, order_id=None,
@@ -2280,6 +2283,361 @@ async def retry_sync_job(job_id: str, user: dict = Depends(get_current_user)):
     return await db.sync_jobs.find_one({"id": job_id}, {"_id": 0})
 
 
+# ============================================================================
+# AI TEMPLATE BUILDER + ORDIA BRIDGE (cloud backbone)
+# ----------------------------------------------------------------------------
+# The Bridge is a core pillar: approved order -> delivery queue -> local agent
+# pulls it -> delivers into the customer's ERP -> delivery notification.
+# Cloud side only here (queue, pairing, relay, profiles). The on-prem agent is
+# a separate distributable; a reference agent (bridge_agent/agent.py) validates
+# the end-to-end flow over HTTP.
+# ============================================================================
+def _parse_llm_json(text) -> dict:
+    text = text.strip() if isinstance(text, str) else str(text)
+    if text.startswith("```"):
+        text = text.split("```", 2)[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip().rstrip("`").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        s, e = text.find("{"), text.rfind("}")
+        return json.loads(text[s:e + 1]) if s != -1 and e != -1 else {}
+
+# ---- Deterministic renderer: canonical order -> ERP-specific file ----------
+_LINE_FIELDS = {"sku", "product", "quantity", "unit", "unit_price", "line_total"}
+
+def _resolve_field(std: dict, line: dict, source: str):
+    if source in _LINE_FIELDS:
+        return line.get(source, "")
+    if source == "customer_name":
+        return (std.get("customer") or {}).get("name", "")
+    if source in ("order_id", "delivery_date", "notes", "total", "currency"):
+        return std.get(source, "")
+    return ""
+
+def _apply_transform(value, transform, decimal_sep):
+    if value is None:
+        value = ""
+    s = str(value)
+    if transform == "upper":
+        s = s.upper()
+    elif transform == "lower":
+        s = s.lower()
+    if decimal_sep and decimal_sep != "." and isinstance(value, (int, float)):
+        s = s.replace(".", decimal_sep)
+    return s
+
+def render_with_profile(std: dict, profile: dict):
+    """Apply a saved/approved export profile to the canonical order. Deterministic."""
+    import csv as _csv
+    fmt = profile.get("format", "csv")
+    delimiter = profile.get("delimiter", ",") or ","
+    decimal_sep = profile.get("decimal_separator", ".")
+    columns = profile.get("columns", []) or []
+    has_header = profile.get("has_header", True)
+    headers = [c.get("header") or c.get("source", "") for c in columns]
+    lines = std.get("lines", []) or []
+
+    if fmt == "xml":
+        root_tag = profile.get("xml_root") or "orders"
+        row_tag = profile.get("xml_row") or "order"
+        parts = [f'<?xml version="1.0" encoding="{profile.get("encoding","UTF-8")}"?>', f"<{root_tag}>"]
+        for line in lines:
+            parts.append(f"  <{row_tag}>")
+            for c in columns:
+                tag = (c.get("header") or c.get("source", "field")).replace(" ", "_")
+                val = _apply_transform(_resolve_field(std, line, c.get("source", "")), c.get("transform"), decimal_sep)
+                parts.append(f"    <{tag}>{val}</{tag}>")
+            parts.append(f"  </{row_tag}>")
+        parts.append(f"</{root_tag}>")
+        return "\n".join(parts), "application/xml", "xml"
+
+    rows = [[_apply_transform(_resolve_field(std, line, c.get("source", "")), c.get("transform"), decimal_sep)
+             for c in columns] for line in lines]
+
+    if fmt in ("xlsx", "excel"):
+        df = pd.DataFrame(rows, columns=headers)
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as w:
+            df.to_excel(w, index=False, header=has_header, sheet_name="Ordine")
+        return buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
+
+    buf = io.StringIO()
+    writer = _csv.writer(buf, delimiter=delimiter)
+    if has_header:
+        writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue(), "text/csv", "csv"
+
+# ---- AI Template Builder ---------------------------------------------------
+TEMPLATE_SYSTEM = """You are an ERP import-format analyst.
+Given a sample file that a company successfully imported into their ERP, infer the exact export profile
+so future files match it. Return ONLY valid JSON (no markdown) with this shape:
+{
+  "name": string,                 // short human name, e.g. "Danea CSV"
+  "erp_name": string,             // best guess of the ERP, or ""
+  "format": "csv" | "xlsx" | "xml",
+  "delimiter": string,            // for csv: "," ";" "\\t" etc
+  "decimal_separator": "." | ",",
+  "date_format": string | null,
+  "encoding": string,             // e.g. "UTF-8", "Windows-1252"
+  "has_header": boolean,
+  "columns": [                    // ONE entry per column, in exact order
+    { "header": string, "source": string, "transform": null | "upper" | "lower" }
+  ]
+}
+The "source" MUST be one of these canonical fields:
+  line-level: sku, product, quantity, unit, unit_price, line_total
+  order-level: customer_name, delivery_date, notes, order_id, total, currency
+Map each column of the sample to the best matching canonical source. If a column cannot be mapped,
+still include it with your best guess. Preserve column order and header names exactly."""
+
+@api.post("/export-profiles/analyze")
+async def analyze_export_profile(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    fname = (file.filename or "").lower()
+    if fname.endswith((".xlsx", ".xls")):
+        df = _read_tabular(content, fname)
+        sample_text = df.head(20).to_csv(index=False)
+        fmt_guess = "xlsx"
+    elif fname.endswith(".xml"):
+        sample_text = content.decode("utf-8", errors="ignore")[:4000]
+        fmt_guess = "xml"
+    else:
+        sample_text = content.decode("utf-8", errors="ignore")[:4000]
+        fmt_guess = "csv"
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"tmpl-{uuid.uuid4()}",
+                   system_message=TEMPLATE_SYSTEM).with_model("anthropic", "claude-sonnet-4-6")
+    resp = await chat.send_message(UserMessage(
+        text=f"SAMPLE ERP IMPORT FILE (looks like {fmt_guess}):\n{sample_text}\n\nReturn the export profile JSON now."))
+    profile = _parse_llm_json(resp)
+    profile.setdefault("format", fmt_guess)
+    profile.setdefault("has_header", True)
+    profile.setdefault("columns", [])
+    return {"proposed_profile": profile, "sample_preview": sample_text[:1000]}
+
+class ExportColumn(BaseModel):
+    header: str
+    source: str
+    transform: Optional[str] = None
+
+class ExportProfileBody(BaseModel):
+    name: str
+    erp_name: str = ""
+    format: str = "csv"
+    delimiter: str = ","
+    decimal_separator: str = "."
+    date_format: Optional[str] = None
+    encoding: str = "UTF-8"
+    has_header: bool = True
+    columns: List[ExportColumn] = []
+    xml_root: Optional[str] = "orders"
+    xml_row: Optional[str] = "order"
+
+@api.get("/export-profiles")
+async def list_export_profiles(user: dict = Depends(get_current_user)):
+    return await db.export_profiles.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+@api.post("/export-profiles")
+async def save_export_profile(body: ExportProfileBody, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    doc = {"id": str(uuid.uuid4()), "company_id": user["company_id"],
+           **body.model_dump(), "columns": [c.model_dump() for c in body.columns],
+           "created_at": now_iso()}
+    await db.export_profiles.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/export-profiles/{profile_id}")
+async def delete_export_profile(profile_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    await db.export_profiles.delete_one({"id": profile_id, "company_id": user["company_id"]})
+    return {"ok": True}
+
+@api.get("/orders/{order_id}/export-profile/{profile_id}")
+async def export_order_with_profile(order_id: str, profile_id: str, user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    profile = await db.export_profiles.find_one({"id": profile_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not order or not profile:
+        raise HTTPException(status_code=404, detail="Ordine o profilo non trovato")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    std = standardize_order(order, company)
+    content, media_type, ext = render_with_profile(std, profile)
+    return StreamingResponse(iter([content]), media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename=ordine-{order_id[:8]}.{ext}"})
+
+# ---- Ordia Bridge: agents, pairing, delivery queue, relay ------------------
+def _gen_pairing_code() -> str:
+    return f"{secrets.randbelow(1000000):06d}"
+
+def _agent_public(a: dict) -> dict:
+    a = dict(a)
+    if a.get("token"):
+        a["token"] = mask_secret(a["token"])
+    return a
+
+class AgentCreate(BaseModel):
+    name: str = "Ordia Bridge"
+    erp_name: str = ""
+    profile_id: Optional[str] = None
+
+class AgentUpdate(BaseModel):
+    name: Optional[str] = None
+    erp_name: Optional[str] = None
+    profile_id: Optional[str] = None
+    active: Optional[bool] = None
+
+@api.post("/bridge/agents")
+async def create_bridge_agent(body: AgentCreate, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    code = _gen_pairing_code()
+    while await db.bridge_agents.find_one({"pairing_code": code, "paired": False}):
+        code = _gen_pairing_code()
+    doc = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"], "name": body.name,
+        "erp_name": body.erp_name, "profile_id": body.profile_id,
+        "pairing_code": code, "token": None, "paired": False, "active": True,
+        "status": "unpaired", "last_seen": None, "created_at": now_iso(),
+    }
+    await db.bridge_agents.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc  # pairing_code returned in clear (needed once by the agent)
+
+@api.get("/bridge/agents")
+async def list_bridge_agents(user: dict = Depends(get_current_user)):
+    agents = await db.bridge_agents.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return [_agent_public(a) for a in agents]
+
+@api.put("/bridge/agents/{agent_id}")
+async def update_bridge_agent(agent_id: str, body: AgentUpdate, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    res = await db.bridge_agents.update_one({"id": agent_id, "company_id": user["company_id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Agente non trovato")
+    return _agent_public(await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0}))
+
+@api.delete("/bridge/agents/{agent_id}")
+async def delete_bridge_agent(agent_id: str, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    await db.bridge_agents.delete_one({"id": agent_id, "company_id": user["company_id"]})
+    return {"ok": True}
+
+class PairBody(BaseModel):
+    pairing_code: str
+
+@api.post("/bridge/pair")
+async def bridge_pair(body: PairBody):
+    """Called by the local agent with the 6-digit code shown in the dashboard.
+    One-time: consumes the code and returns a long-lived agent token."""
+    agent = await db.bridge_agents.find_one({"pairing_code": body.pairing_code, "paired": False})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Codice non valido o già usato")
+    token = secrets.token_urlsafe(32)
+    await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {
+        "token": token, "paired": True, "status": "online", "pairing_code": None,
+        "paired_at": now_iso(), "last_seen": now_iso()}})
+    return {"agent_id": agent["id"], "company_id": agent["company_id"],
+            "name": agent["name"], "token": token}
+
+async def get_current_agent(request: Request) -> dict:
+    token = request.headers.get("X-Bridge-Token", "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Bridge token mancante")
+    agent = await db.bridge_agents.find_one({"token": token, "paired": True}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=401, detail="Bridge token non valido")
+    return agent
+
+async def enqueue_bridge_delivery(company_id: str, order: dict):
+    """Approved order -> Bridge delivery queue. Renders with the agent's profile if set.
+    The order is already persisted, so a failed delivery never loses it."""
+    agent = await db.bridge_agents.find_one(
+        {"company_id": company_id, "paired": True, "active": True}, {"_id": 0})
+    if not agent:
+        return None
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    std = standardize_order(order, company)
+    rendered, rendered_format = None, None
+    if agent.get("profile_id"):
+        profile = await db.export_profiles.find_one(
+            {"id": agent["profile_id"], "company_id": company_id}, {"_id": 0})
+        if profile:
+            try:
+                content, _mt, ext = render_with_profile(std, profile)
+                rendered = content if isinstance(content, str) else base64.b64encode(content).decode("utf-8")
+                rendered_format = ext
+            except Exception as e:
+                logger.warning("Bridge render failed: %s", e)
+    job = {
+        "id": str(uuid.uuid4()), "company_id": company_id, "agent_id": agent["id"],
+        "order_id": order["id"], "customer_name": order.get("customer_name"),
+        "profile_id": agent.get("profile_id"), "erp_name": agent.get("erp_name"),
+        "standard_order": std, "rendered": rendered, "rendered_format": rendered_format,
+        "status": "pending", "attempts": 0, "result": None, "error": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.delivery_jobs.insert_one(dict(job))
+    job.pop("_id", None)
+    logger.info("Bridge delivery queued job=%s order=%s agent=%s", job["id"], order["id"], agent["id"])
+    return job
+
+@api.get("/bridge/relay/poll")
+async def bridge_relay_poll(agent: dict = Depends(get_current_agent)):
+    await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {"last_seen": now_iso(), "status": "online"}})
+    jobs = await db.delivery_jobs.find(
+        {"agent_id": agent["id"], "status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(20)
+    for j in jobs:
+        await db.delivery_jobs.update_one({"id": j["id"]}, {"$set": {"status": "claimed", "claimed_at": now_iso()}})
+    return {"jobs": jobs, "count": len(jobs)}
+
+class AckBody(BaseModel):
+    job_id: str
+    status: str  # delivered | exception
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+@api.post("/bridge/relay/ack")
+async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agent)):
+    job = await db.delivery_jobs.find_one({"id": body.job_id, "agent_id": agent["id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job non trovato")
+    delivered = body.status == "delivered"
+    await db.delivery_jobs.update_one({"id": job["id"]}, {
+        "$set": {"status": "delivered" if delivered else "exception",
+                 "result": body.result, "error": body.error, "updated_at": now_iso()},
+        "$inc": {"attempts": 1}})
+    if delivered:
+        await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
+            "$set": {"status": "exported", "updated_at": now_iso()},
+            "$push": {"history": history_entry("Consegnato nel gestionale (Bridge)", "bridge",
+                                               agent.get("erp_name") or agent["name"])}})
+        await create_notification(agent["company_id"], "bridge_delivered",
+                                  customer_name=job.get("customer_name"), order_id=job["order_id"],
+                                  detail=f"Consegnato in {agent.get('erp_name') or 'gestionale'}")
+    else:
+        await create_notification(agent["company_id"], "bridge_exception",
+                                  customer_name=job.get("customer_name"), order_id=job["order_id"],
+                                  detail=(body.error or "Consegna non riuscita")[:160])
+    return {"ok": True}
+
+@api.post("/bridge/relay/heartbeat")
+async def bridge_relay_heartbeat(agent: dict = Depends(get_current_agent)):
+    await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {"last_seen": now_iso(), "status": "online"}})
+    return {"ok": True, "server_time": now_iso()}
+
+@api.get("/bridge/jobs")
+async def list_delivery_jobs(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {"company_id": user["company_id"]}
+    if status:
+        q["status"] = status
+    return await db.delivery_jobs.find(
+        q, {"_id": 0, "standard_order": 0, "rendered": 0}).sort("created_at", -1).to_list(200)
+
+
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
@@ -2298,6 +2656,10 @@ async def startup():
     await db.login_attempts.create_index("identifier")
     await db.integrations.create_index([("company_id", 1), ("type", 1)])
     await db.learned_aliases.create_index([("company_id", 1), ("phrase", 1)], unique=True)
+    await db.bridge_agents.create_index("token")
+    await db.bridge_agents.create_index([("company_id", 1), ("paired", 1)])
+    await db.delivery_jobs.create_index([("agent_id", 1), ("status", 1)])
+    await db.export_profiles.create_index("company_id")
     await seed_demo_workspace()
     asyncio.create_task(email_poll_loop())
     logger.info("Ordia API ready.")
