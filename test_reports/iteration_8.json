@@ -1,0 +1,22 @@
+{
+  "summary": "Targeted retest of iteration_7 HIGH bug: mobile bottom-nav badge overlap at 390x844. All 5 mobile nav items (Home, Ordini, Clienti, Catalogo, Setup) are now clickable with a normal (non-forced) click and each navigates to its correct route. Fix in AppShell.js (pt-1.5 pb-14, z-[60], main pb-32) confirmed working.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AppShell.js mobile <nav> bottom bar (y=743-788, height=45) now correctly sits above the fixed 'Made with Emergent' badge (y=788-828). Zero overlap in the vertical axis; badge no longer intercepts pointer events on any of the 5 nav items."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only retest)", "frontend": "100% (5/5 mobile nav items pass at 390x844)"},
+  "test_credentials": "Pilot mode auto-login worked, no explicit credentials needed.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iteration_7 HIGH bug (mobile bottom-nav badge overlap) is fully fixed. All 5 mobile nav testids (nav-dashboard-mobile, nav-orders-mobile, nav-customers-mobile, nav-catalog-mobile, nav-setup-mobile) navigate correctly at 390x844 with normal clicks (no force). Badge sits below the nav bar. Desktop flows were already 100% in iteration_7 and were intentionally not re-tested per request.",
+  "rca of the issue": "Root cause was the fixed 'Made with Emergent' badge (bottom-right, ~z-index high) intercepting pointer events on the two right-most nav items (Catalogo, Setup) which sat at the very bottom edge. Fix lifts the entire mobile nav upward via bottom-0 + pb-14 padding (making the nav's clickable area end at y=788, exactly where the badge starts) and sets z-[60] so the nav is above the badge stacking context. Main content compensates with pb-32 to avoid content being hidden. Verified via measured bounding boxes and successful non-force clicks on all 5 items."
+}

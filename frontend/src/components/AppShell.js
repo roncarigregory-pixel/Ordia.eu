@@ -7,11 +7,11 @@ import { cn } from "@/lib/utils";
 const LOGO = "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/c2366cbc5b415553f0e7a15df85e794d75397480b11ddc13c97ae35d53d7c3be.png";
 
 const NAV = [
-  { to: "/app", label: "Dashboard", icon: LayoutGrid, end: true, testid: "nav-dashboard" },
-  { to: "/app/orders", label: "Ordini", icon: Inbox, testid: "nav-orders" },
-  { to: "/app/customers", label: "Clienti", icon: Users, testid: "nav-customers" },
-  { to: "/app/catalog", label: "Catalogo", icon: Package, testid: "nav-catalog" },
-  { to: "/app/setup", label: "Configurazione", icon: Settings, testid: "nav-setup" },
+  { to: "/app", label: "Dashboard", short: "Home", icon: LayoutGrid, end: true, testid: "nav-dashboard" },
+  { to: "/app/orders", label: "Ordini", short: "Ordini", icon: Inbox, testid: "nav-orders" },
+  { to: "/app/customers", label: "Clienti", short: "Clienti", icon: Users, testid: "nav-customers" },
+  { to: "/app/catalog", label: "Catalogo", short: "Catalogo", icon: Package, testid: "nav-catalog" },
+  { to: "/app/setup", label: "Configurazione", short: "Setup", icon: Settings, testid: "nav-setup" },
 ];
 
 export function AppShell({ children }) {
@@ -89,10 +89,10 @@ export function AppShell({ children }) {
           </button>
         </header>
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-[1600px] mx-auto w-full p-6 md:p-8">{children}</div>
+          <div className="max-w-[1600px] mx-auto w-full p-6 md:p-8 pb-32 md:pb-8">{children}</div>
         </main>
-        {/* Mobile bottom nav */}
-        <nav className="md:hidden sticky bottom-0 z-30 flex items-center justify-around border-t border-border bg-white/95 backdrop-blur py-1.5">
+        {/* Mobile bottom nav — lifted above the platform badge */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[60] flex items-stretch border-t border-border bg-white/95 backdrop-blur pt-1.5 pb-14">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
@@ -100,12 +100,12 @@ export function AppShell({ children }) {
               end={item.end}
               data-testid={`${item.testid}-mobile`}
               className={({ isActive }) =>
-                cn("flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-medium",
+                cn("flex flex-1 flex-col items-center gap-0.5 px-1 py-1 text-[10px] font-medium",
                   isActive ? "text-primary" : "text-muted-foreground")
               }
             >
               <item.icon size={20} />
-              {item.label}
+              {item.short}
             </NavLink>
           ))}
         </nav>
