@@ -87,6 +87,14 @@ clienti sconosciuti, prodotti non riconosciuti, richieste cliente.
 - **Deploy readiness**: unico blocker (import `useMemo`) risolto; restano solo raccomandazioni di performance (projection/pagination Mongo).
 - Suite pytest: **102 passati**. Fail residue non legate al codice: httpbin lento (flakiness ERP esterna), varianza LLM (csv), fixture audio.
 
+## ✅ Verifica fix "home bianca" + Deploy readiness (sessione corrente, 2026-07-02)
+- **Home bianca CONFERMATA risolta**: login OK, Command Center apre, cookie+Bearer entrambi 200,
+  refresh non rompe sessione, Notification Center carica, nessun errore console bloccante
+  (401 su /auth/me è atteso: precede l'auto-login pilot mode).
+- **Deployment readiness: PASS** (deployment_agent): nessun blocker, env vars corrette, no secret hardcoded,
+  CORS ok, load_dotenv ok, query Mongo con limiti. Deploy da avviare dal pulsante piattaforma.
+- ⚠️ PILOT_MODE attivo (auto-login demo). Per produzione con login reale: `REACT_APP_PILOT_MODE=false`.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
