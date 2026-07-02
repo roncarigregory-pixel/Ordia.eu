@@ -1,0 +1,53 @@
+{
+  "summary": "P1 verified end-to-end on desktop (1440x900) and mobile (390x844) against the demo tenant. Sidebar navigation, Global Search (click + Cmd/Ctrl+K + Escape), Customers list/detail, Customer search filter, Catalog CRUD (create/edit/delete + search filter), and mobile bottom-nav navigation all work with 0 console errors and 0 pageerror events. One CRITICAL mobile UX bug found: the injected 'Made with Emergent' badge (id=emergent-badge, box {x:232,y:798,w:130,h:20}) overlaps the mobile bottom nav on 390px, intercepting pointer events on nav-catalog-mobile and nav-setup-mobile — normal user clicks on these two nav items fail (Playwright confirms 'emergent-badge subtree intercepts pointer events'). The first three nav items (Dashboard/Ordini/Clienti) are not affected because they are to the left of x=232.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AppShell mobile bottom nav (AppShell.js lines 95-111)",
+        "issue": "The Emergent platform badge (a#emergent-badge, positioned fixed bottom-right) overlaps nav-catalog-mobile (x:216-275) and nav-setup-mobile (x:293-381) at y:793-838 on a 390x844 viewport. Playwright: 'subtree intercepts pointer events'. Real users on mobile cannot tap Catalogo or Configurazione from the bottom nav — the tap opens the Emergent badge (target=_blank) instead. nav-catalog-mobile click stays on the current URL. Nav items to the left of x=232 (Dashboard, Ordini, Clienti) are unaffected.",
+        "selector": "[data-testid=\"nav-catalog-mobile\"], [data-testid=\"nav-setup-mobile\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Mobile bottom nav (390x844)",
+        "issues": [
+          "Nav labels 'Configurazione' render very close to the neighbor 'Catalogo' — the two words visually overlap because 'Configurazione' is 88px wide within a shrinking evenly-spaced flex layout. Consider shortening to 'Setup' on mobile or truncating with ellipsis.",
+          "The emergent-badge overlap is the root cause of unclickable items — either raise the mobile <nav> z-index above the badge (currently z-30 vs badge which uses a very high z-index), add pb-16 spacer so nav sits above the badge, or hide the badge on <md screens."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_7.json",
+    "/app/test_reports/pytest/p0_lifecycle.xml"
+  ],
+  "action_items": [
+    "Fix the mobile bottom-nav overlap with the 'Made with Emergent' badge. Recommended fix in AppShell.js: change the mobile <nav> class from 'sticky bottom-0 z-30' to 'sticky bottom-0 z-[9999]' AND/OR add 'mb-14' to the badge or 'mb-6 pb-safe' padding around the nav. Alternatively, on <md render the nav with position:fixed and bottom:56px so it clears the badge. Verify by clicking nav-catalog-mobile and nav-setup-mobile at viewport 390x844.",
+    "(Optional UX) Shorten 'Configurazione' label to 'Setup' or similar on mobile bottom nav to stop label crowding at 390px."
+  ],
+  "critical_code_review_comments": [
+    "AppShell.js mobile bottom-nav uses z-30, which is below the injected #emergent-badge — this is a systemic issue for any app deployed via the Emergent preview environment. Fix in this app, and consider a shared pattern in future.",
+    "GlobalSearch.js still imports from @phosphor-icons/react while the rest of the app uses lucide-react — carry the mixed-icon debt or migrate for consistency (not blocking).",
+    "Catalog.js: The delete flow (remove()) has no confirmation dialog — one accidental tap deletes a product with only a toast. Add a confirm() or shadcn AlertDialog for destructive actions.",
+    "Catalog.js: The number input for price accepts negative values (no min='0'); the frontend also does parseFloat(form.price) || 0 with no lower bound. Add min='0' and server-side validation.",
+    "Customers.js: filter compares c.name.toLowerCase() but does not normalize accents — 'Café' vs 'cafe' won't match. Minor i18n issue for Italian customer names.",
+    "CustomerDetail.js: 404/'Cliente non trovato' toasts and immediately navigates away — this makes the URL non-shareable. Consider showing an inline empty state with a 'back to list' link instead.",
+    "Carry-over from iter6: server.py is 1660 lines and should be split; WhatsApp webhook still doesn't verify X-Hub-Signature-256; export mutates status before building bytes."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not re-tested (P0 100% from iter6)",
+    "frontend": "P1 desktop 100% (sidebar 5/5, global search click+Cmd/Ctrl+K+Escape+navigate, customers list + search + detail + back, catalog CRUD create/edit/delete + search) · P1 mobile 60% (3/5 mobile nav items work; nav-catalog-mobile & nav-setup-mobile blocked by Emergent badge overlap)"
+  },
+  "test_credentials": "Demo tenant auto-login via pilot mode (demo@ordia.app / demo123 per /app/memory/test_credentials.md — not required, pilot mode fires on load).",
+  "seed_data_creation": "Playwright created + deleted one TEST_P{unique} product via the Catalog dialog (net-zero — deleted at end of test). No other data mutation.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "P1 desktop is 100%. Only failing piece is the mobile bottom-nav overlap with the injected Emergent badge (#emergent-badge). Retest at viewport 390x844 by clicking [data-testid=\"nav-catalog-mobile\"] and [data-testid=\"nav-setup-mobile\"] on /app/customers — both must navigate to /app/catalog and /app/setup respectively. Playwright element-at-point check for point (246, 815) currently returns a <p>Made with Emergent</p> inside a#emergent-badge — that element must be the anchor <a data-testid=\"nav-catalog-mobile\"> once fixed. Global-search 'Maria' query returns 2 customers (Maria - Trattoria Sole, unnamed) + 3 orders on the demo tenant — reusable as smoke query. Catalog testids: catalog-add-button, catalog-search, product-row-{id}, edit-product-{id}, delete-product-{id}; the Add/Edit dialog fields expose data-testid on the Field wrapper (product-name, product-sku, product-price, product-category, product-unit, product-pack, product-aliases) so the actual <input> is at '[data-testid=\"product-name\"] input' — reuse this selector pattern.",
+  "rca of the issue": "Root cause: The Emergent preview environment injects a fixed-position anchor <a id=\"emergent-badge\" href=\"https://app.emergent.sh/...\" target=\"_blank\"> in the bottom-right corner. It occupies roughly (x:232-362, y:798-820) on a 390x844 viewport. AppShell.js mobile bottom nav is 'sticky bottom-0 z-30 flex justify-around' with 5 evenly distributed items; nav-catalog-mobile (x:216-275) and nav-setup-mobile (x:293-381) both fall inside the badge's rectangle. Because the badge is inserted after the app root and its stacking context is above z-30, it wins pointer-event routing. Mitigation: raise the mobile <nav> to z-[9999] (or z-index:2147483647 to defeat the badge), OR add pb-14 to <main> AND bottom-14 to <nav> so the nav sits above the badge, OR set the mobile nav to 'position:fixed inset-x-0 bottom-14'. Reproduction: viewport 390x844, goto /app/customers, click [data-testid=\"nav-catalog-mobile\"] — expected URL /app/catalog, actual URL unchanged; Playwright reports 'emergent-badge subtree intercepts pointer events'."
+}

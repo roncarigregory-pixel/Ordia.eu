@@ -604,38 +604,32 @@ async def delete_order(order_id: str, user: dict = Depends(get_current_user)):
 
 @api.get("/orders/{order_id}/export")
 async def export_order(order_id: str, format: str = "json", user: dict = Depends(get_current_user)):
+    from xml.sax.saxutils import escape as _esc
     order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    await db.orders.update_one(
-        {"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()},
-                           "$push": {"history": history_entry(f"Esportato ({format.upper()})", user["id"])}})
 
     rows = _order_rows(order)
     total = round(sum(r["line_total"] for r in rows), 2)
     fname = f"ordine-{order_id[:8]}"
 
+    # Build the file bytes FIRST; only mutate order status once we know it succeeded.
     if format == "csv":
         df = pd.DataFrame(rows)
         buf = io.StringIO()
         df.to_csv(buf, index=False)
-        buf.seek(0)
-        return StreamingResponse(
-            iter([buf.getvalue()]), media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={fname}.csv"})
+        content, media_type, ext = buf.getvalue(), "text/csv", "csv"
 
-    if format in ("xlsx", "excel"):
+    elif format in ("xlsx", "excel"):
         df = pd.DataFrame(rows)
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Ordine")
-        buf.seek(0)
-        return StreamingResponse(
-            iter([buf.getvalue()]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
+        content = buf.getvalue()
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
 
-    if format == "pdf":
+    elif format == "pdf":
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=24 * mm,
                                 leftMargin=18 * mm, rightMargin=18 * mm, bottomMargin=18 * mm)
@@ -645,8 +639,8 @@ async def export_order(order_id: str, format: str = "json", user: dict = Depends
         meta_style = ParagraphStyle("m", parent=styles["Normal"], textColor=rl_colors.HexColor("#4B5563"), fontSize=9)
         elements = [Paragraph("ORDIA", title_style),
                     Paragraph("Conferma d'ordine", ParagraphStyle("s", parent=styles["Normal"], fontSize=11, spaceAfter=10))]
-        cust = order.get("customer_name") or "Cliente sconosciuto"
-        delivery = order.get("delivery_date") or "—"
+        cust = _esc(order.get("customer_name") or "Cliente sconosciuto")
+        delivery = _esc(order.get("delivery_date") or "—")
         elements.append(Paragraph(f"<b>Cliente:</b> {cust}", meta_style))
         elements.append(Paragraph(f"<b>Consegna:</b> {delivery}", meta_style))
         elements.append(Paragraph(f"<b>ID ordine:</b> {order_id[:8]}", meta_style))
@@ -673,22 +667,25 @@ async def export_order(order_id: str, format: str = "json", user: dict = Depends
         elements.append(table)
         if order.get("notes"):
             elements.append(Spacer(1, 12))
-            elements.append(Paragraph(f"<b>Note:</b> {order['notes']}", meta_style))
+            elements.append(Paragraph(f"<b>Note:</b> {_esc(order['notes'])}", meta_style))
         doc.build(elements)
-        buf.seek(0)
-        return StreamingResponse(
-            iter([buf.getvalue()]), media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={fname}.pdf"})
+        content, media_type, ext = buf.getvalue(), "application/pdf", "pdf"
 
-    payload = {
-        "order_id": order["id"], "customer_name": order.get("customer_name"),
-        "delivery_date": order.get("delivery_date"), "notes": order.get("notes"),
-        "line_items": rows, "total": total,
-    }
-    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    else:
+        payload = {
+            "order_id": order["id"], "customer_name": order.get("customer_name"),
+            "delivery_date": order.get("delivery_date"), "notes": order.get("notes"),
+            "line_items": rows, "total": total,
+        }
+        content = json.dumps(payload, indent=2, ensure_ascii=False)
+        media_type, ext = "application/json", "json"
+
+    await db.orders.update_one(
+        {"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()},
+                           "$push": {"history": history_entry(f"Esportato ({ext.upper()})", user["id"])}})
     return StreamingResponse(
-        iter([body]), media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename={fname}.json"})
+        iter([content]), media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={fname}.{ext}"})
 
 # ---------------------------------------------------------------------------
 # Dashboard

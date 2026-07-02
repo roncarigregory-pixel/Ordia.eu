@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, PencilSimple, Trash, UploadSimple, MagnifyingGlass, Package } from "@phosphor-icons/react";
+import { Plus, Pencil, Trash2, Upload, Search, Package } from "lucide-react";
 
 const EMPTY = { sku: "", name: "", category: "General", unit: "unità", pack_size: "", price: 0, aliases: [] };
 
@@ -77,28 +77,28 @@ export default function Catalog() {
     <div className="animate-fade-up">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-display text-4xl font-black tracking-tighter">Catalogo</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Catalogo</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Prodotti, alias e formati che l'AI usa per abbinare gli ordini. Modificabile e sostituibile.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInput} type="file" accept=".csv,.xlsx,.xls" className="hidden" data-testid="catalog-import-input" onChange={onImport} />
-          <button data-testid="catalog-import-button" onClick={() => fileInput.current?.click()} className="flex items-center gap-2 rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
-            <UploadSimple size={16} /> Importa CSV/Excel
+          <button data-testid="catalog-import-button" onClick={() => fileInput.current?.click()} className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
+            <Upload size={16} /> Importa CSV/Excel
           </button>
-          <button data-testid="catalog-add-button" onClick={openNew} className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors">
-            <Plus size={18} weight="bold" /> Aggiungi prodotto
+          <button data-testid="catalog-add-button" onClick={openNew} className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <Plus size={18} /> Aggiungi prodotto
           </button>
         </div>
       </div>
 
       <div className="relative max-w-xs mb-4">
-        <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input data-testid="catalog-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca per nome o SKU…" className="w-full rounded-md border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input data-testid="catalog-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca per nome o SKU…" className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
       </div>
 
-      <div className="rounded-md border border-border bg-white overflow-hidden">
+      <div className="rounded-xl border border-border bg-white overflow-hidden">
         {!products ? (
           <div className="p-4 space-y-3">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 rounded-md" />)}</div>
         ) : filtered.length === 0 ? (
@@ -131,8 +131,8 @@ export default function Catalog() {
                   <td className="px-5 py-3 text-right font-mono">€{(p.price || 0).toFixed(2)}</td>
                   <td className="px-5 py-3 text-right">
                     <div className="inline-flex gap-1">
-                      <button data-testid={`edit-product-${p.id}`} onClick={() => openEdit(p)} className="text-slate-400 hover:text-foreground p-1"><PencilSimple size={16} /></button>
-                      <button data-testid={`delete-product-${p.id}`} onClick={() => remove(p)} className="text-slate-400 hover:text-red-500 p-1"><Trash size={16} /></button>
+                      <button data-testid={`edit-product-${p.id}`} onClick={() => openEdit(p)} className="text-slate-400 hover:text-foreground p-1"><Pencil size={16} /></button>
+                      <button data-testid={`delete-product-${p.id}`} onClick={() => remove(p)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
