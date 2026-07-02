@@ -1,0 +1,17 @@
+{
+  "delivery_mode": "rpa_odoo",
+  "odoo_url": "http://localhost:8069",
+  "login": "admin",
+  "password": "admin",
+  "default_customer": "Azure Interior",
+  "default_product": "Storage Box",
+  "customer_map": {
+    "Bar Trattoria Roma": "Azure Interior",
+    "Ristorante Da Mario": "Deco Addict"
+  },
+  "product_map": {
+    "Banane Chiquita": "Large Cabinet",
+    "Pomodori Pelati": "Storage Box",
+    "Mozzarella di Bufala": "Corner Desk Right Sit"
+  }
+}

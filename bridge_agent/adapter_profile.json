@@ -1,0 +1,18 @@
+{
+  "erp_guess": "Odoo",
+  "customer_field": "partner_id",
+  "line_add_text": "Add a product",
+  "product_field": "product_template_id",
+  "qty_field": "product_uom_qty",
+  "confidence": 0.95,
+  "notes": "Field names and widget patterns are highly characteristic of Odoo (v16/v17) Sales module. partner_id is explicitly labelled 'Customer'. product_template_id is the per-line product selector (vs product_id, indicating template-level selection is enabled). product_uom_qty is the standard Odoo quantity field on sale.order.line. 'Add a product' is the canonical Odoo line-add control text.",
+  "login": {
+    "login_sel": "input[name=\"login\"]",
+    "pass_sel": "input[name=\"password\"]",
+    "submit_sel": "button[type=\"submit\"]",
+    "ready_sel": ".o_main_navbar"
+  },
+  "new_order_path": "/odoo/sales",
+  "new_button_sel": "button.o_list_button_add, .o_control_panel button:has-text('New')",
+  "save_sel": "button.o_form_button_save, .o_form_button_save"
+}

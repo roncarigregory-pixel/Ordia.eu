@@ -20,6 +20,21 @@ import urllib.error
 
 STATE_FILE = os.environ.get("ORDIA_BRIDGE_STATE", os.path.join(os.path.dirname(__file__), ".agent_state.json"))
 OUT_DIR = os.environ.get("ORDIA_BRIDGE_OUTDIR", os.path.join(os.path.dirname(__file__), "delivered"))
+CONFIG_FILE = os.environ.get("ORDIA_BRIDGE_CONFIG", os.path.join(os.path.dirname(__file__), "config.json"))
+
+
+def load_config():
+    """Local delivery config (stays on-prem with the agent — never in the cloud).
+    { "delivery_mode": "file" | "rpa_odoo", "odoo_url", "login", "password",
+      "customer_map", "product_map", "default_customer", "default_product" }"""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE) as f:
+            cfg = json.load(f)
+    else:
+        cfg = {"delivery_mode": "file"}
+    if os.environ.get("ORDIA_DELIVERY_MODE"):
+        cfg["delivery_mode"] = os.environ["ORDIA_DELIVERY_MODE"]
+    return cfg
 
 
 def _req(method, url, body=None, headers=None):
@@ -53,20 +68,40 @@ def load_token():
     return None
 
 
-def deliver(job):
-    """Simulate delivery into the ERP. Real agents: call local ERP API / drop import
-    file / RPA-lite. Here we just persist the rendered payload and report success."""
+def deliver(job, config):
+    """Deliver the approved order into the ERP using the configured channel.
+      - rpa_odoo: drive the ERP web UI (mouse+keyboard) to create the order.
+      - file (default): write the rendered/canonical payload to disk.
+    Real agents also support: local ERP API call, file drop + import trigger."""
+    mode = config.get("delivery_mode", "file")
+    if mode == "rpa_odoo":
+        import asyncio
+        from rpa_odoo import deliver_via_rpa
+        std = job.get("standard_order") or {}
+        res = asyncio.run(deliver_via_rpa(std, config))
+        print(f"[deliver:rpa] order {job['order_id'][:8]} -> Odoo {res.get('order_ref')} "
+              f"(customer '{res.get('customer')}', {res.get('lines')} lines)")
+        return {"channel": "rpa_odoo", "erp": job.get("erp_name"), **res}
+    if mode == "odoo_api":
+        import asyncio
+        from odoo_api import deliver_via_api
+        std = job.get("standard_order") or {}
+        res = asyncio.run(deliver_via_api(std, config))
+        print(f"[deliver:api] order {job['order_id'][:8]} -> Odoo {res.get('order_ref')} "
+              f"(customer '{res.get('customer')}', {res.get('lines')} lines, total {res.get('total')})")
+        return {"channel": "odoo_api", "erp": job.get("erp_name"), **res}
+
     os.makedirs(OUT_DIR, exist_ok=True)
     ext = job.get("rendered_format") or "json"
     payload = job.get("rendered") or json.dumps(job.get("standard_order", {}), ensure_ascii=False, indent=2)
     path = os.path.join(OUT_DIR, f"order-{job['order_id'][:8]}.{ext}")
     with open(path, "w", encoding="utf-8") as f:
         f.write(payload)
-    print(f"[deliver] order {job['order_id'][:8]} -> {path}")
-    return {"delivered_to": path, "erp": job.get("erp_name")}
+    print(f"[deliver:file] order {job['order_id'][:8]} -> {path}")
+    return {"channel": "file", "delivered_to": path, "erp": job.get("erp_name")}
 
 
-def cycle(backend, token):
+def cycle(backend, token, config):
     headers = {"X-Bridge-Token": token}
     status, data = _req("GET", f"{backend}/api/bridge/relay/poll", headers=headers)
     if status != 200:
@@ -77,7 +112,7 @@ def cycle(backend, token):
         print(f"[poll] {len(jobs)} job(s) claimed")
     for job in jobs:
         try:
-            result = deliver(job)
+            result = deliver(job, config)
             _req("POST", f"{backend}/api/bridge/relay/ack",
                  {"job_id": job["id"], "status": "delivered", "result": result}, headers=headers)
             print(f"[ack] delivered {job['id']}")
@@ -101,13 +136,16 @@ def main():
         print("No token. Pair first with --pair <CODE>.")
         sys.exit(1)
 
+    config = load_config()
+    print(f"[config] delivery_mode = {config.get('delivery_mode', 'file')}")
+
     if args.once:
-        cycle(args.backend, token)
+        cycle(args.backend, token, config)
         return
     print(f"[run] Ordia Bridge agent polling every {args.interval}s (Ctrl+C to stop)")
     while True:
         try:
-            cycle(args.backend, token)
+            cycle(args.backend, token, config)
             _req("POST", f"{args.backend}/api/bridge/relay/heartbeat", {}, {"X-Bridge-Token": token})
         except Exception as e:
             print(f"[loop] error: {e}")

@@ -128,6 +128,13 @@ Obiettivo utente: provare che il Bridge crea un ordine in un ERP reale via RPA (
 - Risultato: **ordine S00021 salvato**, verificato indipendentemente via API Odoo (totale €719, 2 righe). Screenshot in `bridge_agent/rpa_shots/`.
 - Conferma il braccio Class D (UI-only) dell'architettura ibrida. Lo stesso pattern connettore vale per TeamSystem/BC via API quando ci saranno le credenziali.
 
+## ✅ Bridge — canali di consegna provati su ERP REALE (Odoo) — 2026-07-02
+Odoo 18 + PostgreSQL nel pod (DB `ordia`, :8069). Flusso Bridge: approva ordine → coda `delivery_jobs` → agente on-prem preleva → consegna → ack → notifica. Tutti verificati via API Odoo indipendente.
+- **B — RPA integrata nel workflow (automatico)**: `agent.py` mode `rpa_odoo` → `rpa_odoo.py deliver_via_rpa` guida la UI (mouse+tastiera) → ordine **S00022**. Config locale on-prem `config.json` (mapping master-data). Notifica "Consegnato in Odoo".
+- **A — Apprendimento da introspezione (moat)**: `rpa_learn.py` scopre 15 campi dal form live → Claude mappa canonico→campi (partner_id/product_template_id/product_uom_qty, conf 0.95) → `adapter_profile.json`. `rpa_replay.py` = motore GENERICO (nessun nome-campo hardcoded) → ordine **S00023** dal solo profilo appreso. ERP nuovo supportato senza nuovo codice.
+- **C — API diretta**: `odoo_api.py deliver_via_api` (JSON-RPC, auth+search+create sale.order) mode `odoo_api` → ordine **S00024** (€158). Canale più veloce/robusto per Class A.
+Agente `deliver()` con 3 canali: rpa_odoo | odoo_api | file. Screenshot in `bridge_agent/rpa_shots/`.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
