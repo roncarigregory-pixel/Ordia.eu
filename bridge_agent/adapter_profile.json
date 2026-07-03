@@ -4,8 +4,8 @@
   "line_add_text": "Add a product",
   "product_field": "product_template_id",
   "qty_field": "product_uom_qty",
-  "confidence": 0.95,
-  "notes": "Field names and widget patterns are highly characteristic of Odoo (v16/v17) Sales module. partner_id is explicitly labelled 'Customer'. product_template_id is the per-line product selector (vs product_id, indicating template-level selection is enabled). product_uom_qty is the standard Odoo quantity field on sale.order.line. 'Add a product' is the canonical Odoo line-add control text.",
+  "confidence": 0.93,
+  "notes": "Field names and structure are highly characteristic of Odoo's sale.order model. 'partner_id' is labeled 'Customer', 'product_template_id' is the product selector on the order line, and 'product_uom_qty' is the standard quantity field. The 'Add a product' line control matches Odoo's standard sales order UI. Confidence is slightly below 1.0 because 'product_id' (the variant-level field) is absent from the inventory, suggesting either a simplified view or that product_template_id is being used as the primary product selector in this configuration.",
   "login": {
     "login_sel": "input[name=\"login\"]",
     "pass_sel": "input[name=\"password\"]",
@@ -14,5 +14,6 @@
   },
   "new_order_path": "/odoo/sales",
   "new_button_sel": "button.o_list_button_add, .o_control_panel button:has-text('New')",
-  "save_sel": "button.o_form_button_save, .o_form_button_save"
+  "save_sel": "button.o_form_button_save, .o_form_button_save",
+  "_discovered_fields": 15
 }

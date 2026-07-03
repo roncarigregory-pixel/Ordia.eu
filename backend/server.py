@@ -1951,6 +1951,7 @@ NOTIF_META = {
     "auto_confirmed":        {"priority": "low",    "title": "Ordine auto-confermato",    "action": "Nessuna azione necessaria"},
     "bridge_delivered":      {"priority": "low",    "title": "Consegnato nel gestionale", "action": "Nessuna azione necessaria"},
     "bridge_exception":      {"priority": "high",   "title": "Consegna Bridge fallita",   "action": "Rivedi e riprova la consegna"},
+    "adapter_pending":       {"priority": "high",   "title": "ERP appreso — conferma",    "action": "Conferma l'ordine di prova per attivare"},
 }
 
 async def create_notification(company_id, ntype, *, customer_name=None, order_id=None,
@@ -2637,6 +2638,96 @@ async def list_delivery_jobs(status: Optional[str] = None, user: dict = Depends(
     return await db.delivery_jobs.find(
         q, {"_id": 0, "standard_order": 0, "rendered": 0}).sort("created_at", -1).to_list(200)
 
+# ---- ERP Adapter Profiles (learned UI recipes) + network effect -------------
+# An adapter is the LEARNED recipe to drive a given ERP's UI. It is company-agnostic
+# (a UI recipe), so once one customer learns & confirms an ERP, every other customer
+# on the same ERP inherits it (network effect). Master-data (codes) stays per-company.
+class AdapterBody(BaseModel):
+    erp_key: str                 # e.g. "odoo/18"
+    erp_guess: str = ""
+    spec: dict                   # customer_field, product_field, qty_field, selectors...
+    confidence: float = 0.0
+    test_order_ref: Optional[str] = None
+
+@api.post("/bridge/adapters")
+async def submit_adapter(body: AdapterBody, agent: dict = Depends(get_current_agent)):
+    """Called by the agent after LEARNING an ERP. Saved as pending_confirmation until
+    a human confirms the test order it produced."""
+    prev = await db.erp_adapters.find({"erp_key": body.erp_key}).sort("version", -1).to_list(1)
+    version = (prev[0]["version"] + 1) if prev else 1
+    doc = {
+        "id": str(uuid.uuid4()), "erp_key": body.erp_key, "erp_guess": body.erp_guess,
+        "spec": body.spec, "confidence": body.confidence, "source_company_id": agent["company_id"],
+        "test_order_ref": body.test_order_ref, "verified": False, "status": "pending_confirmation",
+        "version": version, "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.erp_adapters.insert_one(dict(doc))
+    doc.pop("_id", None)
+    await create_notification(agent["company_id"], "adapter_pending",
+                              detail=f"{body.erp_guess or body.erp_key}: conferma l'ordine di prova {body.test_order_ref or ''}".strip())
+    return doc
+
+@api.get("/bridge/adapters")
+async def list_adapters(user: dict = Depends(get_current_user)):
+    """Own pending adapters + all verified/active adapters (network effect)."""
+    docs = await db.erp_adapters.find(
+        {"$or": [{"source_company_id": user["company_id"]}, {"status": "active"}]},
+        {"_id": 0}).sort([("erp_key", 1), ("version", -1)]).to_list(200)
+    return docs
+
+@api.get("/bridge/adapters/resolve")
+async def resolve_adapter(erp_key: str, agent: dict = Depends(get_current_agent)):
+    """Agent fetches the best ACTIVE adapter for an ERP — inherited across customers."""
+    docs = await db.erp_adapters.find(
+        {"erp_key": erp_key, "status": "active"}, {"_id": 0}).sort("version", -1).to_list(1)
+    if not docs:
+        raise HTTPException(status_code=404, detail="Nessun adapter attivo per questo ERP")
+    return docs[0]
+
+@api.post("/bridge/adapters/{adapter_id}/confirm")
+async def confirm_adapter(adapter_id: str, user: dict = Depends(get_current_user)):
+    """Human confirms the test order is correct -> adapter goes ACTIVE (shared)."""
+    require_privileged(user)
+    res = await db.erp_adapters.update_one(
+        {"id": adapter_id}, {"$set": {"verified": True, "status": "active",
+                                      "verified_by": user["company_id"], "updated_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Adapter non trovato")
+    return await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
+
+@api.put("/bridge/adapters/{adapter_id}/heal")
+async def heal_adapter(adapter_id: str, body: AdapterBody, agent: dict = Depends(get_current_agent)):
+    """Self-healing: the agent re-learned the UI (it changed) and pushes an updated spec."""
+    res = await db.erp_adapters.update_one(
+        {"id": adapter_id}, {"$set": {"spec": body.spec, "confidence": body.confidence,
+                                      "updated_at": now_iso(), "healed_at": now_iso()},
+                             "$inc": {"heal_count": 1}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Adapter non trovato")
+    return await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
+
+# ---- Master-data sync (ERP code lists) -> makes mapping "safe" ---------------
+class MasterDataBody(BaseModel):
+    erp_key: str
+    kind: str                    # customer | product | tax
+    entries: List[dict]          # [{erp_id, code, name}]
+
+@api.post("/bridge/master-data")
+async def upsert_master_data(body: MasterDataBody, agent: dict = Depends(get_current_agent)):
+    """Agent imports the ERP's code lists so canonical->ERP mapping resolves to real codes."""
+    doc = {"company_id": agent["company_id"], "erp_key": body.erp_key, "kind": body.kind,
+           "entries": body.entries, "count": len(body.entries), "updated_at": now_iso()}
+    await db.erp_master_data.update_one(
+        {"company_id": agent["company_id"], "erp_key": body.erp_key, "kind": body.kind},
+        {"$set": doc}, upsert=True)
+    return {"ok": True, "kind": body.kind, "count": len(body.entries)}
+
+@api.get("/bridge/master-data")
+async def get_master_data(user: dict = Depends(get_current_user)):
+    docs = await db.erp_master_data.find(
+        {"company_id": user["company_id"]}, {"_id": 0, "entries": 0}).to_list(50)
+    return docs
+
 
 app.include_router(api)
 app.add_middleware(
@@ -2660,6 +2751,8 @@ async def startup():
     await db.bridge_agents.create_index([("company_id", 1), ("paired", 1)])
     await db.delivery_jobs.create_index([("agent_id", 1), ("status", 1)])
     await db.export_profiles.create_index("company_id")
+    await db.erp_adapters.create_index([("erp_key", 1), ("version", -1)])
+    await db.erp_master_data.create_index([("company_id", 1), ("erp_key", 1), ("kind", 1)])
     await seed_demo_workspace()
     asyncio.create_task(email_poll_loop())
     logger.info("Ordia API ready.")

@@ -135,6 +135,15 @@ Odoo 18 + PostgreSQL nel pod (DB `ordia`, :8069). Flusso Bridge: approva ordine 
 - **C — API diretta**: `odoo_api.py deliver_via_api` (JSON-RPC, auth+search+create sale.order) mode `odoo_api` → ordine **S00024** (€158). Canale più veloce/robusto per Class A.
 Agente `deliver()` con 3 canali: rpa_odoo | odoo_api | file. Screenshot in `bridge_agent/rpa_shots/`.
 
+## ✅ Bridge — apprendimento robusto + conferma + master-data (2026-07-03)
+Tutto provato E2E su Odoo reale (Odoo 18 + PostgreSQL nel pod; reinstallabile con `bridge_agent/setup_odoo.sh` — i pacchetti di sistema sono effimeri tra i restart del pod, /app e Mongo persistono).
+- **Adapter Profile nel backend + effetto-rete**: collezioni `erp_adapters`(condivisa) + `erp_master_data`(per-azienda). Endpoint `POST/GET /bridge/adapters`, `GET /bridge/adapters/resolve` (agente), `POST /bridge/adapters/{id}/confirm`, `PUT /bridge/adapters/{id}/heal`. resolve restituisce l'adapter ACTIVE di qualsiasi azienda → un cliente nuovo eredita l'ERP appreso da un altro.
+- **Conferma umana su ordine di prova**: learn crea un ordine di prova → adapter `pending_confirmation` con `test_order_ref` → resolve dà 404 finché non confermato → `confirm` → `active`. UI: sezione "3 · ERP appresi" con bottone "Conferma ordine di prova" + badge Attivo.
+- **Master-data sync**: `bridge_agent/master_data_import.py` importa da Odoo (2 clienti, 41 prodotti, 1 IVA) → `POST /bridge/master-data` → UI mostra il riepilogo. Rende il mapping "sicuro".
+- **Self-healing**: `rpa_replay.py replay_with_healing` — se un selettore appreso fallisce (UI cambiata), ri-apprende via `rpa_learn.learn_adapter`, patcha lo spec, PUT `/heal`, riprova. Provato: adapter rotto → timeout → re-learn → ordine S00023 creato.
+- Notifica `adapter_pending`. Indici Mongo per adapters/master-data.
+Script agente: agent.py (3 canali), rpa_odoo.py, rpa_learn.py, rpa_replay.py, odoo_api.py, master_data_import.py, setup_odoo.sh.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.

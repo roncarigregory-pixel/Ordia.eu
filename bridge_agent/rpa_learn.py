@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""Ordia Bridge — LEARN a new ERP from a single demonstration/introspection.
+"""Ordia Bridge — LEARN a new ERP (introspection + AI mapping), reusable.
 
-Point the Bridge at an ERP's "new order" screen. It:
-  1. Opens the form and INTROSPECTS every field (label + technical name + widget type).
-  2. Sends that inventory to the LLM, which MAPS Ordia's canonical fields onto the
-     ERP's fields and identifies the order-line controls.
-  3. Saves a reusable "UI Adapter Profile" (adapter_profile.json).
-
-Nothing about this specific ERP is hardcoded in the mapping: the field names are
-DISCOVERED live and mapped by AI. rpa_replay.py then delivers orders using only
-this profile — so a brand-new ERP is supported without writing new code.
+learn_adapter(url) -> spec dict (login/new-order selectors + AI-mapped field names).
+Standalone run: learn -> create a TEST order -> push adapter (pending_confirmation)
+to the backend so a human can confirm the test order before go-live.
 """
 import asyncio
 import json
 import os
 import sys
+import urllib.request
+import urllib.error
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
@@ -22,30 +18,22 @@ load_dotenv("/app/backend/.env")
 from emergentintegrations.llm.chat import LlmChat, UserMessage  # noqa: E402
 
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
-OUT = os.path.join(os.path.dirname(__file__), "adapter_profile.json")
-SHOTS = os.path.join(os.path.dirname(__file__), "rpa_shots")
+HERE = os.path.dirname(__file__)
+OUT = os.path.join(HERE, "adapter_profile.json")
+SHOTS = os.path.join(HERE, "rpa_shots")
+STATE_FILE = os.path.join(HERE, ".agent_state.json")
 os.makedirs(SHOTS, exist_ok=True)
 
 LEARN_SYSTEM = """You are an ERP UI-integration analyst.
-You receive an inventory of the fields found on an ERP "new sales order" screen:
-each item has a visible LABEL, a technical field NAME, and a WIDGET type. You also
-receive the list of order-line controls (e.g. an "add line" link) found on the page.
-
-Map Ordia's canonical order onto this ERP form. Return ONLY valid JSON:
-{
-  "erp_guess": string,
-  "customer_field": string,        // NAME of the field that holds the customer/partner
-  "line_add_text": string,         // visible text of the control that adds an order line
-  "product_field": string,         // NAME of the per-line product field
-  "qty_field": string,             // NAME of the per-line quantity field
-  "confidence": number,            // 0..1
-  "notes": string
-}
-Choose NAMES strictly from the provided inventory. If unsure, pick the most likely."""
+You receive an inventory of fields on an ERP "new sales order" screen (each with a
+visible LABEL, a technical field NAME, a WIDGET type) and the order-line controls.
+Map Ordia's canonical order onto this form. Return ONLY valid JSON:
+{"erp_guess": string, "customer_field": string, "line_add_text": string,
+ "product_field": string, "qty_field": string, "confidence": number, "notes": string}
+Choose NAMES strictly from the inventory."""
 
 
-async def introspect(page):
-    """Enumerate form fields (label + name + widget) and line controls."""
+async def _introspect(page):
     fields = await page.eval_on_selector_all(
         ".o_field_widget[name]",
         """els => els.map(el => {
@@ -53,18 +41,13 @@ async def introspect(page):
             let label = '';
             const id = el.querySelector('input,textarea,select')?.id;
             if (id) { const l = document.querySelector(`label[for="${id}"]`); if (l) label = l.innerText.trim(); }
-            if (!label) { const cell = el.closest('.o_cell'); }
             if (!label) { const lbl = el.closest('td,.o_wrap_field')?.parentElement?.querySelector('label,.o_form_label'); if (lbl) label = lbl.innerText.trim(); }
-            const widget = el.classList.contains('o_field_many2one') ? 'autocomplete'
-                         : (el.querySelector('input') ? 'input' : (el.querySelector('textarea') ? 'textarea' : 'other'));
+            const widget = el.classList.contains('o_field_many2one') ? 'autocomplete' : (el.querySelector('input') ? 'input' : 'other');
             return {name, label, widget};
-        })"""
-    )
+        })""")
     line_controls = await page.eval_on_selector_all(
         ".o_field_x2many_list_row_add a, a:has-text('Add')",
-        "els => els.map(e => e.innerText.trim()).filter(Boolean)"
-    )
-    # de-dup by name keeping first label
+        "els => els.map(e => e.innerText.trim()).filter(Boolean)")
     seen, inv = set(), []
     for f in fields:
         if f["name"] and f["name"] not in seen:
@@ -72,8 +55,8 @@ async def introspect(page):
     return inv, list(dict.fromkeys(line_controls))
 
 
-async def main():
-    url = os.environ.get("ODOO_URL", "http://localhost:8069")
+async def learn_adapter(url):
+    """Open the ERP new-order form, introspect fields, AI-map to canonical. Returns spec."""
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
         page = await browser.new_page(viewport={"width": 1600, "height": 1000})
@@ -88,41 +71,79 @@ async def main():
             await page.wait_for_timeout(2000)
             await page.locator("button.o_list_button_add, .o_control_panel button:has-text('New')").first.click()
             await page.wait_for_timeout(2500)
-            # reveal a line row so per-line fields exist in the DOM
             try:
                 await page.locator("a:has-text('Add a product'), .o_field_x2many_list_row_add a").first.click()
                 await page.wait_for_timeout(1500)
             except Exception:
                 pass
-            inv, line_controls = await introspect(page)
+            inv, line_controls = await _introspect(page)
             await page.screenshot(path=os.path.join(SHOTS, "learn_form.png"))
         finally:
             await browser.close()
 
-    print(f"[learn] discovered {len(inv)} fields; line controls: {line_controls}")
-    inventory_text = json.dumps({"fields": inv, "line_controls": line_controls}, ensure_ascii=False)
-
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id="erp-learn",
                    system_message=LEARN_SYSTEM).with_model("anthropic", "claude-sonnet-4-6")
-    resp = await chat.send_message(UserMessage(text=f"FIELD INVENTORY:\n{inventory_text}\n\nReturn the mapping JSON."))
+    resp = await chat.send_message(UserMessage(
+        text=f"FIELD INVENTORY:\n{json.dumps({'fields': inv, 'line_controls': line_controls}, ensure_ascii=False)}\n\nReturn the mapping JSON."))
     text = resp.strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1]
-        if text.startswith("json"):
-            text = text[4:]
+        text = text[4:] if text.startswith("json") else text
         text = text.strip().rstrip("`").strip()
-    profile = json.loads(text)
-    profile["login"] = {"login_sel": 'input[name="login"]', "pass_sel": 'input[name="password"]',
-                        "submit_sel": 'button[type="submit"]', "ready_sel": ".o_main_navbar"}
-    profile["new_order_path"] = "/odoo/sales"
-    profile["new_button_sel"] = "button.o_list_button_add, .o_control_panel button:has-text('New')"
-    profile["save_sel"] = "button.o_form_button_save, .o_form_button_save"
+    m = json.loads(text)
+    m["login"] = {"login_sel": 'input[name="login"]', "pass_sel": 'input[name="password"]',
+                  "submit_sel": 'button[type="submit"]', "ready_sel": ".o_main_navbar"}
+    m["new_order_path"] = "/odoo/sales"
+    m["new_button_sel"] = "button.o_list_button_add, .o_control_panel button:has-text('New')"
+    m["save_sel"] = "button.o_form_button_save, .o_form_button_save"
+    m["_discovered_fields"] = len(inv)
+    return m
+
+
+def _req(method, url, body=None, headers=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {"Content-Type": "application/json", "User-Agent": "OrdiaBridge/1.0"}
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=45) as r:
+            return r.status, json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode() or "{}")
+
+
+async def _main():
+    url = os.environ.get("ODOO_URL", "http://localhost:8069")
+    backend = sys.argv[1] if len(sys.argv) > 1 else None
+    spec = await learn_adapter(url)
     with open(OUT, "w") as f:
-        json.dump(profile, f, indent=2, ensure_ascii=False)
-    print(f"[learn] AI-derived adapter profile saved -> {OUT}")
-    print(json.dumps({k: profile[k] for k in ("erp_guess", "customer_field", "line_add_text",
-                                              "product_field", "qty_field", "confidence")}, indent=2))
+        json.dump(spec, f, indent=2, ensure_ascii=False)
+    print(f"[learn] discovered {spec['_discovered_fields']} fields; AI map: "
+          f"customer={spec['customer_field']} product={spec['product_field']} qty={spec['qty_field']} conf={spec['confidence']}")
+
+    # create a TEST order using the learned profile (human will confirm it)
+    test_ref = None
+    try:
+        from rpa_replay import replay
+        cfg = {"odoo_url": url, "login": "admin", "password": "admin",
+               "default_customer": "Azure Interior", "default_product": "Storage Box"}
+        test_order = {"order_id": "TESTLEARN", "customer": {"name": "Azure Interior"},
+                      "lines": [{"product": "Storage Box", "quantity": 1}]}
+        res = await replay(spec, test_order, cfg)
+        test_ref = res.get("order_ref")
+        print(f"[learn] test order created: {test_ref}")
+    except Exception as e:
+        print(f"[learn] test order failed: {e}")
+
+    if backend and os.path.exists(STATE_FILE):
+        token = json.load(open(STATE_FILE)).get("token")
+        st, data = _req("POST", f"{backend}/api/bridge/adapters",
+                        {"erp_key": "odoo/18", "erp_guess": spec.get("erp_guess", ""),
+                         "spec": spec, "confidence": spec.get("confidence", 0), "test_order_ref": test_ref},
+                        {"X-Bridge-Token": token})
+        print(f"[learn] adapter pushed to backend: HTTP {st} id={data.get('id')} status={data.get('status')}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(_main())

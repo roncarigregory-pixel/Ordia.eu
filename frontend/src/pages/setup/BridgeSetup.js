@@ -60,6 +60,8 @@ export default function BridgeSetup() {
   const [agents, setAgents] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [adapters, setAdapters] = useState([]);
+  const [masterData, setMasterData] = useState([]);
   const [proposed, setProposed] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -67,8 +69,15 @@ export default function BridgeSetup() {
     api.get("/bridge/agents").then(({ data }) => setAgents(data)).catch(() => {});
     api.get("/export-profiles").then(({ data }) => setProfiles(data)).catch(() => {});
     api.get("/bridge/jobs").then(({ data }) => setJobs(data)).catch(() => {});
+    api.get("/bridge/adapters").then(({ data }) => setAdapters(data)).catch(() => {});
+    api.get("/bridge/master-data").then(({ data }) => setMasterData(data)).catch(() => {});
   };
   useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, []);
+
+  const confirmAdapter = async (id) => {
+    try { await api.post(`/bridge/adapters/${id}/confirm`); toast.success("ERP attivato — ora è disponibile per tutti i clienti"); load(); }
+    catch (e) { toast.error(formatApiError(e)); }
+  };
 
   const createAgent = async () => {
     try { await api.post("/bridge/agents", { name: "Ordia Bridge" }); toast.success("Agente creato — usa il codice per accoppiarlo"); load(); }
@@ -187,11 +196,54 @@ export default function BridgeSetup() {
         </div>
       </section>
 
+      {/* Learned ERPs (adapters) + master-data */}
+      <section className="mb-10">
+        <h2 className="font-display text-lg font-bold tracking-tight mb-1">3 · ERP appresi (self-learning)</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Il Bridge apprende un ERP nuovo da una dimostrazione. Conferma l'ordine di prova per attivarlo — poi ogni cliente sullo stesso ERP lo eredita.
+        </p>
+        {adapters.length === 0 ? (
+          <p className="text-sm text-muted-foreground rounded-md border border-dashed border-border p-6 text-center">Nessun ERP appreso ancora.</p>
+        ) : (
+          <div className="space-y-2">
+            {adapters.map((a) => (
+              <div key={a.id} data-testid={`adapter-${a.id}`} className="flex items-center justify-between rounded-md border border-border bg-white px-4 py-3 text-sm">
+                <div>
+                  <b>{a.erp_guess || a.erp_key}</b>
+                  <span className="text-muted-foreground"> · v{a.version} · conf {Math.round((a.confidence || 0) * 100)}%
+                    {a.heal_count ? ` · auto-riparato ${a.heal_count}×` : ""}
+                    {a.test_order_ref ? ` · ordine di prova ${a.test_order_ref}` : ""}</span>
+                </div>
+                {a.status === "active" ? (
+                  <span data-testid={`adapter-status-${a.id}`} className="flex items-center gap-1 text-xs rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">
+                    <CheckCircle size={13} weight="fill" /> Attivo
+                  </span>
+                ) : (
+                  <button data-testid={`adapter-confirm-${a.id}`} onClick={() => confirmAdapter(a.id)}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+                    Conferma ordine di prova
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {masterData.length > 0 && (
+          <div data-testid="master-data-summary" className="mt-4 flex flex-wrap gap-2">
+            {masterData.map((m) => (
+              <span key={m.kind + m.erp_key} className="text-xs rounded-full bg-secondary px-3 py-1 text-muted-foreground">
+                {m.count} {m.kind === "customer" ? "clienti" : m.kind === "product" ? "prodotti" : "IVA"} sincronizzati
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Delivery log */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <ArrowsClockwise size={16} className="text-slate-400" />
-          <h2 className="font-display text-lg font-bold tracking-tight">3 · Consegne recenti</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight">4 · Consegne recenti</h2>
         </div>
         {jobs.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nessuna consegna ancora. Approva un ordine per metterlo in coda.</p>

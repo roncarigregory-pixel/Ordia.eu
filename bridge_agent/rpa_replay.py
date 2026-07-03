@@ -59,16 +59,17 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
             await page.locator(profile["new_button_sel"]).first.click()
             await page.wait_for_timeout(2500)
 
-            await page.locator(cust_sel).first.click()
+            await page.locator(cust_sel).first.click(timeout=8000)
             await _pick(page, customer)
 
             for ln in lines:
                 await page.locator(f"a:has-text('{add_text}'), .o_field_x2many_list_row_add a").first.click()
                 await page.wait_for_timeout(1200)
-                await page.locator(prod_sel).first.click()
+                # product field — validate selector (self-healing hook triggers on failure upstream)
+                await page.locator(prod_sel).first.click(timeout=8000)
                 await _pick(page, ln["product"])
                 await page.wait_for_timeout(1000)
-                await page.locator(qty_sel).first.click()
+                await page.locator(qty_sel).first.click(timeout=8000)
                 await page.keyboard.press("Control+A")
                 await page.keyboard.type(str(ln["qty"]), delay=40)
                 await page.keyboard.press("Tab")
@@ -85,6 +86,34 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
             return {"order_ref": ref, "customer": customer, "lines": len(lines), "engine": "generic-replay"}
         finally:
             await browser.close()
+
+
+async def replay_with_healing(profile: dict, std_order: dict, cfg: dict, backend=None, token=None, adapter_id=None):
+    """Deliver via the learned profile. If a learned selector no longer matches (UI
+    changed), RE-LEARN the ERP form, patch the profile, push the heal upstream, retry once."""
+    try:
+        return await replay(profile, std_order, cfg)
+    except Exception as e:
+        print(f"[self-heal] replay failed ({type(e).__name__}: {str(e)[:80]}). Re-learning ERP UI…")
+        from rpa_learn import learn_adapter
+        fresh = await learn_adapter(cfg.get("odoo_url", "http://localhost:8069"))
+        # patch the field recipe with freshly discovered names
+        for k in ("customer_field", "product_field", "qty_field", "line_add_text"):
+            profile[k] = fresh.get(k, profile.get(k))
+        profile["confidence"] = fresh.get("confidence", profile.get("confidence"))
+        print(f"[self-heal] re-learned: customer={profile['customer_field']} product={profile['product_field']} qty={profile['qty_field']}")
+        if backend and token and adapter_id:
+            import urllib.request, urllib.error
+            body = json.dumps({"erp_key": "odoo/18", "spec": profile,
+                               "confidence": profile.get("confidence", 0)}).encode()
+            req = urllib.request.Request(f"{backend}/api/bridge/adapters/{adapter_id}/heal", data=body,
+                                         headers={"Content-Type": "application/json", "X-Bridge-Token": token}, method="PUT")
+            try:
+                urllib.request.urlopen(req, timeout=30)
+                print("[self-heal] healed adapter pushed to backend")
+            except Exception as ex:
+                print(f"[self-heal] heal push failed: {ex}")
+        return await replay(profile, std_order, cfg)
 
 
 async def _main():
