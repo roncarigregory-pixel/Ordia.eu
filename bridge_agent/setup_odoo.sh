@@ -8,7 +8,21 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql postgresql-clie
 service postgresql start
 sleep 3
 su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='odoo'\" | grep -q 1 || psql -c \"CREATE USER odoo WITH CREATEDB PASSWORD 'odoo';\"" || true
-echo "[2/5] odoo repo…"
+echo "[2/5] odoo repo + config…"
+mkdir -p /etc/odoo
+cat > /etc/odoo/odoo.conf <<'CONF'
+[options]
+admin_passwd = ordia_master
+db_host = localhost
+db_port = 5432
+db_user = odoo
+db_password = odoo
+addons_path = /usr/lib/python3/dist-packages/odoo/addons
+http_port = 8069
+http_interface = 127.0.0.1
+list_db = True
+logfile = /tmp/odoo_run.log
+CONF
 curl -s https://nightly.odoo.com/odoo.key | gpg --dearmor -o /usr/share/keyrings/odoo-archive-keyring.gpg 2>/dev/null || true
 echo "deb [signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg] https://nightly.odoo.com/18.0/nightly/deb/ ./" > /etc/apt/sources.list.d/odoo.list
 apt-get update -qq >/dev/null 2>&1

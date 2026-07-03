@@ -68,12 +68,36 @@ def load_token():
     return None
 
 
-def deliver(job, config):
+def deliver(job, config, backend=None, token=None):
     """Deliver the approved order into the ERP using the configured channel.
-      - rpa_odoo: drive the ERP web UI (mouse+keyboard) to create the order.
-      - file (default): write the rendered/canonical payload to disk.
-    Real agents also support: local ERP API call, file drop + import trigger."""
+      - rpa_learned: resolve the ACTIVE learned adapter from Ordia, deliver via the
+        self-healing generic replay engine, and report the outcome (metrics/network effect).
+      - rpa_odoo: drive the ERP web UI with a local static profile.
+      - odoo_api: create the order via the ERP API.
+      - file (default): write the rendered/canonical payload to disk."""
     mode = config.get("delivery_mode", "file")
+    if mode == "rpa_learned":
+        import asyncio
+        from rpa_replay import replay_with_healing
+        erp_key = config.get("erp_key", "odoo/18")
+        st, adapter = _req("GET", f"{backend}/api/bridge/adapters/resolve?erp_key={erp_key}",
+                           headers={"X-Bridge-Token": token})
+        if st != 200:
+            raise RuntimeError(f"Nessun adapter attivo per {erp_key} (HTTP {st}) — apprendi e conferma l'ERP prima")
+        adapter_id = adapter["id"]
+        print(f"[deliver:rpa_learned] adapter v{adapter.get('version')} conf {adapter.get('confidence')} "
+              f"success_rate={adapter.get('success_rate')} heals={adapter.get('heal_count')}")
+        std = job.get("standard_order") or {}
+        try:
+            res = asyncio.run(replay_with_healing(adapter["spec"], std, config, backend, token, adapter_id))
+            _req("POST", f"{backend}/api/bridge/adapters/{adapter_id}/report",
+                 {"status": "success"}, {"X-Bridge-Token": token})
+            print(f"[deliver:rpa_learned] order {job['order_id'][:8]} -> {res.get('order_ref')}")
+            return {"channel": "rpa_learned", "erp": job.get("erp_name"), "adapter_version": adapter.get("version"), **res}
+        except Exception:
+            _req("POST", f"{backend}/api/bridge/adapters/{adapter_id}/report",
+                 {"status": "failure"}, {"X-Bridge-Token": token})
+            raise
     if mode == "rpa_odoo":
         import asyncio
         from rpa_odoo import deliver_via_rpa
@@ -112,7 +136,7 @@ def cycle(backend, token, config):
         print(f"[poll] {len(jobs)} job(s) claimed")
     for job in jobs:
         try:
-            result = deliver(job, config)
+            result = deliver(job, config, backend, token)
             _req("POST", f"{backend}/api/bridge/relay/ack",
                  {"job_id": job["id"], "status": "delivered", "result": result}, headers=headers)
             print(f"[ack] delivered {job['id']}")

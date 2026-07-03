@@ -2659,13 +2659,19 @@ async def submit_adapter(body: AdapterBody, agent: dict = Depends(get_current_ag
         "id": str(uuid.uuid4()), "erp_key": body.erp_key, "erp_guess": body.erp_guess,
         "spec": body.spec, "confidence": body.confidence, "source_company_id": agent["company_id"],
         "test_order_ref": body.test_order_ref, "verified": False, "status": "pending_confirmation",
-        "version": version, "created_at": now_iso(), "updated_at": now_iso(),
+        "version": version, "deliveries": 0, "successes": 0, "failures": 0, "heal_count": 0,
+        "last_used": None, "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.erp_adapters.insert_one(dict(doc))
     doc.pop("_id", None)
     await create_notification(agent["company_id"], "adapter_pending",
                               detail=f"{body.erp_guess or body.erp_key}: conferma l'ordine di prova {body.test_order_ref or ''}".strip())
-    return doc
+    return _with_rate(doc)
+
+def _with_rate(a: dict) -> dict:
+    d = a.get("deliveries", 0) or 0
+    a["success_rate"] = round((a.get("successes", 0) / d), 3) if d else None
+    return a
 
 @api.get("/bridge/adapters")
 async def list_adapters(user: dict = Depends(get_current_user)):
@@ -2673,16 +2679,35 @@ async def list_adapters(user: dict = Depends(get_current_user)):
     docs = await db.erp_adapters.find(
         {"$or": [{"source_company_id": user["company_id"]}, {"status": "active"}]},
         {"_id": 0}).sort([("erp_key", 1), ("version", -1)]).to_list(200)
-    return docs
+    return [_with_rate(d) for d in docs]
 
 @api.get("/bridge/adapters/resolve")
 async def resolve_adapter(erp_key: str, agent: dict = Depends(get_current_agent)):
-    """Agent fetches the best ACTIVE adapter for an ERP — inherited across customers."""
+    """Agent fetches the BEST active adapter for an ERP — inherited across customers.
+    Ranking: proven success rate first, then most recent version (new versions still
+    get a fair trial before enough data exists)."""
     docs = await db.erp_adapters.find(
-        {"erp_key": erp_key, "status": "active"}, {"_id": 0}).sort("version", -1).to_list(1)
+        {"erp_key": erp_key, "status": "active"}, {"_id": 0}).to_list(50)
     if not docs:
         raise HTTPException(status_code=404, detail="Nessun adapter attivo per questo ERP")
-    return docs[0]
+    def rank(a):
+        d = a.get("deliveries", 0) or 0
+        rate = (a.get("successes", 0) / d) if d else 0.75  # unproven adapters get a fair trial
+        return (round(rate, 3), a.get("version", 0))
+    best = sorted(docs, key=rank, reverse=True)[0]
+    return _with_rate(best)
+
+class AdapterReport(BaseModel):
+    status: str  # success | failure
+
+@api.post("/bridge/adapters/{adapter_id}/report")
+async def report_adapter_outcome(adapter_id: str, body: AdapterReport, agent: dict = Depends(get_current_agent)):
+    """Agent reports a delivery outcome so metrics drive future adapter selection."""
+    inc = {"deliveries": 1, "successes" if body.status == "success" else "failures": 1}
+    res = await db.erp_adapters.update_one({"id": adapter_id}, {"$inc": inc, "$set": {"last_used": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Adapter non trovato")
+    return {"ok": True}
 
 @api.post("/bridge/adapters/{adapter_id}/confirm")
 async def confirm_adapter(adapter_id: str, user: dict = Depends(get_current_user)):

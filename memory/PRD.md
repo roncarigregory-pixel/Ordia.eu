@@ -144,6 +144,11 @@ Tutto provato E2E su Odoo reale (Odoo 18 + PostgreSQL nel pod; reinstallabile co
 - Notifica `adapter_pending`. Indici Mongo per adapters/master-data.
 Script agente: agent.py (3 canali), rpa_odoo.py, rpa_learn.py, rpa_replay.py, odoo_api.py, master_data_import.py, setup_odoo.sh.
 
+## ✅ Bridge — versioning/metriche adapter + canale live self-healing (2026-07-03)
+- **Versioning + metriche + effetto-rete guidato dai dati**: `erp_adapters` ora traccia deliveries/successes/failures/heal_count. Nuovo `POST /bridge/adapters/{id}/report` (agente). `resolve` sceglie il MIGLIORE adapter active per erp_key (success_rate poi versione; i nuovi adapter hanno un trial equo a 0.75). Verificato: v2 rate 1.0 batte v1 rate 0.6 → selezionato v2.
+- **Canale live `rpa_learned` in agent.py**: risolve l'adapter active dal backend → consegna via `replay_with_healing` (self-healing) → riporta success/failure (metriche). Provato live E2E: ordine approvato → coda → agente risolve v2 → crea ordine reale **S00021** in Odoo → ack → metriche aggiornate (v2 deliveries:1 succ:1). Il replay ora ha default strutturali (login/new_order/save) → robusto anche con spec minimale.
+- `bridge_agent/setup_odoo.sh` ora scrive `odoo.conf` (reinstall affidabile dopo i restart effimeri del pod).
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.

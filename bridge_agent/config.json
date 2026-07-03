@@ -1,5 +1,6 @@
 {
-  "delivery_mode": "rpa_odoo",
+  "delivery_mode": "rpa_learned",
+  "erp_key": "odoo/18",
   "odoo_url": "http://localhost:8069",
   "login": "admin",
   "password": "admin",

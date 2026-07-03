@@ -38,7 +38,14 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
     lines = [{"product": _map(l.get("product"), cfg.get("product_map"), cfg.get("default_product", "Storage Box")),
               "qty": l.get("quantity") or 1} for l in std_order.get("lines", [])]
 
-    lg = profile["login"]
+    lg = profile.get("login") or {}
+    lg = {"login_sel": lg.get("login_sel", 'input[name="login"]'),
+          "pass_sel": lg.get("pass_sel", 'input[name="password"]'),
+          "submit_sel": lg.get("submit_sel", 'button[type="submit"]'),
+          "ready_sel": lg.get("ready_sel", ".o_main_navbar")}
+    new_order_path = profile.get("new_order_path", "/odoo/sales")
+    new_button_sel = profile.get("new_button_sel", "button.o_list_button_add, .o_control_panel button:has-text('New')")
+    save_sel = profile.get("save_sel", "button.o_form_button_save, .o_form_button_save")
     cust_sel = f'.o_field_widget[name="{profile["customer_field"]}"] input'
     prod_sel = f'.o_selected_row .o_field_widget[name="{profile["product_field"]}"] input'
     qty_sel = f'.o_selected_row .o_field_widget[name="{profile["qty_field"]}"] input'
@@ -53,10 +60,10 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
             await page.fill(lg["pass_sel"], cfg.get("password", "admin"))
             await page.click(lg["submit_sel"])
             await page.wait_for_selector(lg["ready_sel"], timeout=45000)
-            await page.goto(f"{url}{profile['new_order_path']}", wait_until="domcontentloaded", timeout=45000)
+            await page.goto(f"{url}{new_order_path}", wait_until="domcontentloaded", timeout=45000)
             await page.wait_for_selector(".o_control_panel", timeout=45000)
             await page.wait_for_timeout(2000)
-            await page.locator(profile["new_button_sel"]).first.click()
+            await page.locator(new_button_sel).first.click()
             await page.wait_for_timeout(2500)
 
             await page.locator(cust_sel).first.click(timeout=8000)
@@ -76,7 +83,7 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
                 await page.wait_for_timeout(1000)
 
             tag = (std_order.get("order_id") or "order")[:8]
-            await page.locator(profile["save_sel"]).first.click()
+            await page.locator(save_sel).first.click()
             await page.wait_for_timeout(3500)
             await page.screenshot(path=os.path.join(SHOTS, f"replay_{tag}.png"))
             try:
