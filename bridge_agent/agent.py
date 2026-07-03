@@ -76,6 +76,14 @@ def deliver(job, config, backend=None, token=None):
       - odoo_api: create the order via the ERP API.
       - file (default): write the rendered/canonical payload to disk."""
     mode = config.get("delivery_mode", "file")
+    if mode == "desktop_uia":
+        import asyncio
+        from replay_desktop import deliver_via_desktop
+        std = job.get("standard_order") or {}
+        res = asyncio.run(deliver_via_desktop(std, config, backend, token))
+        print(f"[deliver:desktop_uia] order {job['order_id'][:8]} -> {res.get('lines')} righe "
+              f"(adapter v{res.get('adapter_version')})")
+        return {"channel": "desktop_uia", "erp": job.get("erp_name"), **res}
     if mode == "rpa_learned":
         import asyncio
         from rpa_replay import replay_with_healing

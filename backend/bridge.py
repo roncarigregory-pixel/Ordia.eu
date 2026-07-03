@@ -7,6 +7,7 @@ import dependency on server.py. Behavior is identical to the previous inline cod
 """
 import os
 import uuid
+import json
 import secrets
 import base64
 import asyncio
@@ -16,6 +17,7 @@ from typing import Optional, List
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 
 def setup_bridge(api, ctx):
@@ -32,6 +34,7 @@ def setup_bridge(api, ctx):
     RESEND_API_KEY = ctx["RESEND_API_KEY"]
     SENDER_EMAIL = ctx["SENDER_EMAIL"]
     resend = ctx["resend"]
+    EMERGENT_LLM_KEY = ctx["EMERGENT_LLM_KEY"]
 
     # ---- Ordia Bridge: agents, pairing, delivery queue, relay ------------------
     def _gen_pairing_code() -> str:
@@ -425,6 +428,7 @@ def setup_bridge(api, ctx):
         spec: dict                   # customer_field, product_field, qty_field, selectors...
         confidence: float = 0.0
         test_order_ref: Optional[str] = None
+        adapter_kind: str = "web_dom"   # web_dom | desktop_uia | file_import | api
 
     @api.post("/bridge/adapters")
     async def submit_adapter(body: AdapterBody, agent: dict = Depends(get_current_agent)):
@@ -434,6 +438,7 @@ def setup_bridge(api, ctx):
         version = (prev[0]["version"] + 1) if prev else 1
         doc = {
             "id": str(uuid.uuid4()), "erp_key": body.erp_key, "erp_guess": body.erp_guess,
+            "adapter_kind": body.adapter_kind,
             "spec": body.spec, "confidence": body.confidence, "source_company_id": agent["company_id"],
             "test_order_ref": body.test_order_ref, "verified": False, "status": "pending_confirmation",
             "version": version, "deliveries": 0, "successes": 0, "failures": 0, "heal_count": 0,
@@ -459,12 +464,16 @@ def setup_bridge(api, ctx):
         return [_with_rate(d) for d in docs]
 
     @api.get("/bridge/adapters/resolve")
-    async def resolve_adapter(erp_key: str, agent: dict = Depends(get_current_agent)):
+    async def resolve_adapter(erp_key: str, adapter_kind: Optional[str] = None,
+                              agent: dict = Depends(get_current_agent)):
         """Agent fetches the BEST active adapter for an ERP — inherited across customers.
         Ranking: proven success rate first, then most recent version (new versions still
-        get a fair trial before enough data exists)."""
-        docs = await db.erp_adapters.find(
-            {"erp_key": erp_key, "status": "active"}, {"_id": 0}).to_list(50)
+        get a fair trial before enough data exists). Optional adapter_kind disambiguates
+        when both a web_dom and a desktop_uia recipe exist for the same ERP."""
+        q = {"erp_key": erp_key, "status": "active"}
+        if adapter_kind:
+            q["adapter_kind"] = adapter_kind
+        docs = await db.erp_adapters.find(q, {"_id": 0}).to_list(50)
         if not docs:
             raise HTTPException(status_code=404, detail="Nessun adapter attivo per questo ERP")
         def rank(a):
@@ -473,6 +482,98 @@ def setup_bridge(api, ctx):
             return (round(rate, 3), a.get("version", 0))
         best = sorted(docs, key=rank, reverse=True)[0]
         return _with_rate(best)
+
+    # ---- Desktop learning by demonstration: compile a raw UI trace into a
+    # DETERMINISTIC procedure (no API, no DOM). The LLM/vision compiles & self-heals;
+    # it never clicks at runtime. Reuses the same confirm/heal/readiness/diary backbone.
+    # A `desktop_adapter_spec` looks like:
+    # {
+    #   "platform": "windows-uia", "erp_guess": str,
+    #   "window": {"title_regex": str, "fingerprint_controls": [automation_id, ...]},
+    #   "field_map": {"customer_name": <ref>, "sku": <ref>, "quantity": <ref>, ...},
+    #   "steps": [ {"seq": int, "op": "open_form|set_field|add_line|click|select|save|wait",
+    #               "field": Optional[str], "value_from": Optional[str],
+    #               "locator": {"by": "automation_id|name|text_anchor|bbox",
+    #                           "value": str, "control_type": str, "anchor": Optional[str]},
+    #               "desc": str} ],
+    #   "line_loop": {"start_seq": int, "end_seq": int},   # steps repeated per order line
+    #   "confidence": float, "notes": str
+    # }
+    # Locators are tried in order of robustness: automation_id -> name -> text_anchor(OCR)
+    # -> bbox(vision). Absolute pixels are never emitted by the compiler.
+    COMPILE_SYSTEM = """You are an RPA integration compiler for desktop ERP software (no API, no web DOM).
+You receive a DEMONSTRATION TRACE recorded while a human created ONE order in the ERP: an ordered list of
+UI actions, each with the target control's accessibility metadata (name, automation_id, control_type,
+window_title) and the value typed. Optional screenshots may accompany it.
+Produce a DETERMINISTIC, replayable procedure as STRICT JSON matching this schema:
+{"platform":"windows-uia","erp_guess":string,
+ "window":{"title_regex":string,"fingerprint_controls":[string]},
+ "field_map":{"customer_name":string,"sku":string,"quantity":string,"delivery_date":string,"notes":string},
+ "steps":[{"seq":int,"op":"open_form|set_field|add_line|click|select|save|wait",
+           "field":string|null,"value_from":string|null,
+           "locator":{"by":"automation_id|name|text_anchor|bbox","value":string,"control_type":string,"anchor":string|null},
+           "desc":string}],
+ "line_loop":{"start_seq":int,"end_seq":int}|null,
+ "confidence":number,"notes":string}
+RULES:
+- Prefer locator by automation_id, else name, else text_anchor (a nearby label), else bbox. NEVER emit absolute pixel coordinates.
+- Identify which steps repeat per ORDER LINE (product + quantity) and wrap them in line_loop.
+- Map ERP fields onto Ordia canonical fields (customer_name, sku/product, quantity, delivery_date, notes) via field_map + value_from on set_field steps.
+- fingerprint_controls = a few stable automation_ids that identify the 'new order' window (used for pre-flight).
+- Output ONLY the JSON. No prose, no markdown fences."""
+
+    class CompileBody(BaseModel):
+        erp_key: str
+        erp_guess: str = ""
+        trace: List[dict]                      # recorded demonstration steps
+        screenshots: Optional[List[str]] = None  # optional base64 PNGs (vision aid)
+        test_order_ref: Optional[str] = None
+
+    @api.post("/bridge/adapters/compile")
+    async def compile_desktop_adapter(body: CompileBody, agent: dict = Depends(get_current_agent)):
+        """Compile a demonstration trace into a deterministic desktop_uia adapter (pending
+        confirmation). This is the 'learn by watching' step for API-less/DOM-less ERPs."""
+        if not EMERGENT_LLM_KEY:
+            raise HTTPException(status_code=400, detail="LLM non configurato (EMERGENT_LLM_KEY mancante)")
+        if not body.trace:
+            raise HTTPException(status_code=400, detail="Traccia dimostrativa vuota")
+        chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"compile-{uuid.uuid4()}",
+                       system_message=COMPILE_SYSTEM).with_model("anthropic", "claude-sonnet-4-6")
+        images = [ImageContent(image_base64=s) for s in (body.screenshots or [])][:6]
+        prompt = ("DEMONSTRATION TRACE (JSON):\n"
+                  + json.dumps({"erp_guess": body.erp_guess, "trace": body.trace}, ensure_ascii=False)
+                  + "\n\nCompile the deterministic desktop_adapter_spec JSON now.")
+        resp = await chat.send_message(UserMessage(text=prompt, file_contents=images or None))
+        text = (resp or "").strip()
+        if text.startswith("```"):
+            text = text.split("```", 2)[1]
+            text = text[4:] if text.startswith("json") else text
+            text = text.strip().rstrip("`").strip()
+        try:
+            spec = json.loads(text)
+        except Exception as e:
+            logger.error("compile parse failed: %s | raw=%s", e, text[:400])
+            raise HTTPException(status_code=502, detail="Compilazione non riuscita: output non valido")
+        spec.setdefault("platform", "windows-uia")
+        prev = await db.erp_adapters.find({"erp_key": body.erp_key}).sort("version", -1).to_list(1)
+        version = (prev[0]["version"] + 1) if prev else 1
+        doc = {
+            "id": str(uuid.uuid4()), "erp_key": body.erp_key,
+            "erp_guess": spec.get("erp_guess") or body.erp_guess, "adapter_kind": "desktop_uia",
+            "spec": spec, "confidence": float(spec.get("confidence") or 0),
+            "source_company_id": agent["company_id"], "test_order_ref": body.test_order_ref,
+            "verified": False, "status": "pending_confirmation", "version": version,
+            "deliveries": 0, "successes": 0, "failures": 0, "heal_count": 0,
+            "last_used": None, "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        await db.erp_adapters.insert_one(dict(doc))
+        doc.pop("_id", None)
+        await create_notification(agent["company_id"], "adapter_pending",
+            detail=f"{doc['erp_guess'] or body.erp_key} (desktop): conferma l'ordine di prova per attivare")
+        await log_bridge_event(agent["company_id"], agent["id"], "compiled",
+            f"Compilata procedura desktop per {doc['erp_guess'] or body.erp_key} da dimostrazione "
+            f"({len(spec.get('steps', []))} passi, conf {int(doc['confidence']*100)}%)")
+        return _with_rate(doc)
 
     class AdapterReport(BaseModel):
         status: str  # success | failure

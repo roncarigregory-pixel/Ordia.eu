@@ -1882,6 +1882,104 @@ DEMO_ORDERS = [
             ("DRY-010", "2 sacchi farina", 2, 0.96),
         ],
     },
+    {
+        "customer_name": "Pizzeria Napoli 2000",
+        "delivery_date": "domani",
+        "source_type": "whatsapp",
+        "status": "validated",
+        "days_ago": 1,
+        "source_preview": "Ciao! Per domani mattina: 8 casse mozzarella, 5 scatole pelati, 3 sacchi farina 00 e 1 cassa olio evo. Grazie mille!",
+        "lines": [
+            ("DAI-021", "8 casse mozzarella", 8, 0.99),
+            ("CND-070", "5 scatole pelati", 5, 0.96),
+            ("DRY-010", "3 sacchi farina 00", 3, 0.97),
+            ("OIL-050", "1 cassa olio evo", 1, 0.95),
+        ],
+    },
+    {
+        "customer_name": "Mensa Scolastica San Giorgio",
+        "delivery_date": "lunedì",
+        "source_type": "email",
+        "status": "exported",
+        "days_ago": 4,
+        "source_preview": "Ordine mensa settimana prossima:\n- 6 box petto di pollo\n- 4 sacchi riso basmati\n- 5 casse piselli surgelati\n- 8 casse latte",
+        "lines": [
+            ("MEA-030", "6 box petto di pollo", 6, 0.95),
+            ("DRY-012", "4 sacchi riso basmati", 4, 0.97),
+            ("FRZ-061", "5 casse piselli surgelati", 5, 0.96),
+            ("DAI-020", "8 casse latte", 8, 0.98),
+        ],
+    },
+    {
+        "customer_name": "Osteria del Borgo",
+        "delivery_date": "mercoledì",
+        "source_type": "text",
+        "status": "needs_review",
+        "days_ago": 0,
+        "source_preview": "Buongiorno, per mercoledì: 3 box macinato, 4 casse penne, 2 casse olio girasole e un po' di pane per i tavoli (fatemi sapere le quantità).",
+        "lines": [
+            ("MEA-031", "3 box macinato", 3, 0.9),
+            ("DRY-013", "4 casse penne", 4, 0.95),
+            ("OIL-051", "2 casse olio girasole", 2, 0.93),
+            ("BAK-080", "un po' di pane", 2, 0.4),
+        ],
+    },
+    {
+        "customer_name": "Gastronomia Bella Italia",
+        "delivery_date": "venerdì",
+        "source_type": "pdf",
+        "status": "ready",
+        "days_ago": 0,
+        "source_preview": "[PDF: ordine_bellaitalia.pdf] 2 casse burro, 4 vassoi uova, 3 casse mozzarella, 2 box salsicce.",
+        "lines": [
+            ("DAI-022", "2 casse burro", 2, 0.94),
+            ("DAI-023", "4 vassoi uova", 4, 0.99),
+            ("DAI-021", "3 casse mozzarella", 3, 0.97),
+            ("MEA-032", "2 box salsicce", 2, 0.91),
+        ],
+    },
+    {
+        "customer_name": "Bar Sport Centrale",
+        "delivery_date": "domani",
+        "source_type": "whatsapp",
+        "status": "validated",
+        "days_ago": 2,
+        "source_preview": "Rifornimento bar: 6 casse coca, 8 casse acqua naturale, 4 casse succo arancia e 2 casse cornetti.",
+        "lines": [
+            ("BEV-040", "6 casse coca", 6, 0.98),
+            ("BEV-041", "8 casse acqua naturale", 8, 0.98),
+            ("BEV-042", "4 casse succo arancia", 4, 0.95),
+            ("BAK-080", "2 casse cornetti", 2, 0.86),
+        ],
+    },
+    {
+        "customer_name": "Hotel Belvedere",
+        "delivery_date": "sabato",
+        "source_type": "email",
+        "status": "exported",
+        "days_ago": 5,
+        "source_preview": "Ordine cucina Hotel Belvedere:\n- 2 casse olio evo\n- 3 casse ceci\n- 4 scatole pelati\n- 5 box petto di pollo",
+        "lines": [
+            ("OIL-050", "2 casse olio evo", 2, 0.96),
+            ("CND-071", "3 casse ceci", 3, 0.94),
+            ("CND-070", "4 scatole pelati", 4, 0.95),
+            ("MEA-030", "5 box petto di pollo", 5, 0.95),
+        ],
+    },
+    {
+        "customer_name": "Ristorante Il Grano",
+        "delivery_date": "martedì",
+        "source_type": "text",
+        "status": "validated",
+        "days_ago": 3,
+        "source_preview": "Per martedì: 4 sacchi farina, 2 sacchi zucchero, 6 vassoi uova, 3 casse burro.",
+        "lines": [
+            ("DRY-010", "4 sacchi farina", 4, 0.97),
+            ("DRY-011", "2 sacchi zucchero", 2, 0.96),
+            ("DAI-023", "6 vassoi uova", 6, 0.99),
+            ("DAI-022", "3 casse burro", 3, 0.94),
+        ],
+    },
 ]
 
 async def seed_demo_workspace():
@@ -2484,6 +2582,7 @@ _bridge = _bridge_mod.setup_bridge(api, {
     "require_privileged": require_privileged, "mask_secret": mask_secret,
     "RESEND_API_KEY": RESEND_API_KEY, "SENDER_EMAIL": SENDER_EMAIL,
     "resend": globals().get("resend"),
+    "EMERGENT_LLM_KEY": EMERGENT_LLM_KEY,
 })
 enqueue_bridge_delivery = _bridge["enqueue_bridge_delivery"]
 bridge_monitor_loop = _bridge["bridge_monitor_loop"]

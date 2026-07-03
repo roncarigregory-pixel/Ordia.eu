@@ -64,3 +64,55 @@ proattivo (Ordia avvisa prima che te ne accorga tu).
 combacia) + self-healing (riapprende e riprova) + circuit-breaker (adapter poco affidabile →
 quarantena automatica, escluso dalla rete finché non si auto-ripara).
 
+## Braccio DESKTOP (ERP senza API né web) — learn-by-demonstration
+Per gestionali **desktop Windows senza API né DOM** (Danea, Mexal, TeamSystem desktop, ...)
+il Bridge impara **guardando** l'operatore, tramite l'accessibility tree di Windows (UI Automation)
+con visione/OCR solo come rete di sicurezza. Principio: **LLM/visione per imparare e riparare,
+esecuzione deterministica a runtime** (mai click decisi dall'LLM).
+
+Tipi di adapter (`adapter_kind`): `web_dom` (Playwright/DOM) · `desktop_uia` (Windows UIA) ·
+`file_import` (CSV/XML) · `api`. Il Delivery Router sceglie il braccio per classe di ERP.
+
+### Come funziona (3 passi)
+1. **Dimostrazione** — l'operatore crea UN ordine a mano mentre `recorder.py` registra la traccia
+   (per ogni click: `name`/`automation_id`/`control_type`/finestra; testo digitato) + qualche screenshot.
+2. **Compilazione AI (cloud)** — `POST /api/bridge/adapters/compile` invia la traccia (+screenshot)
+   a Claude, che produce un `desktop_adapter_spec` **deterministico**: passi ordinati con locator
+   semantici (automation_id → name → text_anchor → bbox), `field_map` canonico, e `line_loop`
+   (i passi ripetuti per ogni riga ordine). Adapter salvato `pending_confirmation`.
+3. **Conferma + Replay** — confermi l'ordine di prova in Ordia (`/confirm` → `active`).
+   `replay_desktop.py` esegue i passi via UIA in modo deterministico; pre-flight sull'impronta
+   della finestra; su errore → self-heal (re-introspezione + ricompilazione + `/heal`) e riprova.
+
+### Installazione/test su Windows
+```powershell
+# sul PC del cliente dove gira il gestionale
+pip install pywinauto pynput mss pillow pytesseract
+# 1) accoppia l'agente (una volta)
+python agent.py --backend https://app.ordia.app --pair 123456
+# 2) registra la dimostrazione (crea un ordine, poi premi ESC)
+python recorder.py --backend https://app.ordia.app --erp-key "danea/2024" --erp-guess "Danea Easyfatt"
+# 3) conferma l'ordine di prova in Ordia -> adapter 'active'
+# 4) consegna reale (impostare delivery_mode='desktop_uia' + erp_key in config.json)
+python replay_desktop.py order.json --backend https://app.ordia.app --erp-key "danea/2024"
+```
+`config.json` (on-prem, mai nel cloud): `{"delivery_mode": "desktop_uia", "erp_key": "danea/2024"}`.
+
+### Schema (sintesi) `desktop_adapter_spec`
+```json
+{"platform":"windows-uia","erp_guess":"Danea Easyfatt",
+ "window":{"title_regex":"Easyfatt.*","fingerprint_controls":["txtCliente","gridRighe","btnSalva"]},
+ "field_map":{"customer_name":"txtCliente","sku":"colArticolo","quantity":"colQta"},
+ "steps":[{"seq":1,"op":"open_form","locator":{"by":"name","value":"Nuovo","control_type":"Button"}},
+          {"seq":2,"op":"set_field","field":"customer_name","locator":{"by":"automation_id","value":"txtCliente","control_type":"Edit"}},
+          {"seq":3,"op":"add_line","locator":{"by":"name","value":"Aggiungi riga","control_type":"Button"}},
+          {"seq":4,"op":"set_field","field":"sku","locator":{"by":"automation_id","value":"colArticolo","control_type":"Edit"}},
+          {"seq":5,"op":"set_field","field":"quantity","locator":{"by":"automation_id","value":"colQta","control_type":"Edit"}},
+          {"seq":6,"op":"save","locator":{"by":"name","value":"Salva","control_type":"Button"}}],
+ "line_loop":{"start_seq":3,"end_seq":5},"confidence":0.9,"notes":"..."}
+```
+Nota: la RPA desktop gira **solo su Windows** (dove sta il gestionale). Su Linux/macOS o app
+opache (Citrix/RDP/green-screen) si usa il fallback visione+OCR. Lo schema resta generico per
+qualsiasi ERP Windows.
+
+
