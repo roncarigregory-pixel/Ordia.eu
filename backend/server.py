@@ -3006,6 +3006,120 @@ async def bridge_diary(agent_id: str, user: dict = Depends(get_current_user)):
         {"company_id": user["company_id"], "$or": [{"agent_id": agent_id}, {"agent_id": None}]},
         {"_id": 0}).sort("created_at", -1).to_list(30)
 
+# ---- Weekly Bridge summary (turns the learning wait into visible progress) ---
+async def build_weekly_summary(company_id: str) -> dict:
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    events = await db.bridge_events.find(
+        {"company_id": company_id, "created_at": {"$gte": since}},
+        {"_id": 0}).sort("created_at", -1).to_list(1000)
+    by_kind = {}
+    for e in events:
+        by_kind[e["kind"]] = by_kind.get(e["kind"], 0) + 1
+    md = await db.erp_master_data.find({"company_id": company_id}, {"_id": 0, "entries": 0}).to_list(50)
+    agents = await db.bridge_agents.find(
+        {"company_id": company_id, "paired": True}, {"_id": 0}).to_list(50)
+    return {
+        "period_days": 7,
+        "drafts_prepared": by_kind.get("dry_run", 0),
+        "codes_in_catalog": sum(m.get("count", 0) for m in md),
+        "self_heals": by_kind.get("healed", 0),
+        "erps_activated": by_kind.get("adapter_active", 0),
+        "agents_ready": sum(1 for a in agents if a.get("maturity") == "ready"),
+        "agents_active": sum(1 for a in agents if a.get("maturity") == "active"),
+        "agents": [{"name": a.get("erp_name") or a.get("name"), "maturity": a.get("maturity"),
+                    "readiness": a.get("readiness", 0), "dry_runs": a.get("dry_runs", 0)} for a in agents],
+        "events_count": len(events),
+        "highlights": [e["message"] for e in events[:5]],
+    }
+
+def render_summary_email(company_name: str, s: dict):
+    subject = "Ordia · Il tuo Bridge questa settimana"
+    hi = "".join(f"<li style='margin:4px 0;color:#334155'>{m}</li>" for m in s.get("highlights", [])) \
+         or "<li style='color:#94A3B8'>Nessuna attività registrata.</li>"
+    ready_line = ""
+    if s["agents_ready"]:
+        ready_line = (f"<p style='margin:16px 0;padding:12px 14px;background:#EFF6FF;border-radius:8px;"
+                      f"color:#1D4ED8;font-weight:600'>⚡ {s['agents_ready']} Bridge è pronto a inserire "
+                      f"gli ordini automaticamente — attivalo con un click in Ordia.</p>")
+    html = f"""<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto">
+  <h2 style="color:#0B1E3B;margin:0 0 4px">Il tuo Ordia Bridge questa settimana</h2>
+  <p style="color:#64748B;margin:0 0 20px">{company_name} · ultimi 7 giorni</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <tr>
+      <td style="padding:14px;background:#F8FAFC;border-radius:8px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#0B1E3B">{s['drafts_prepared']}</div>
+        <div style="font-size:12px;color:#64748B">bozze di prova corrette</div></td>
+      <td style="width:12px"></td>
+      <td style="padding:14px;background:#F8FAFC;border-radius:8px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#0B1E3B">{s['codes_in_catalog']}</div>
+        <div style="font-size:12px;color:#64748B">codici in anagrafica</div></td>
+      <td style="width:12px"></td>
+      <td style="padding:14px;background:#F8FAFC;border-radius:8px;text-align:center">
+        <div style="font-size:26px;font-weight:800;color:#0B1E3B">{s['self_heals']}</div>
+        <div style="font-size:12px;color:#64748B">auto-riparazioni</div></td>
+    </tr>
+  </table>
+  {ready_line}
+  <h3 style="color:#0B1E3B;margin:20px 0 6px;font-size:15px">Cosa ho imparato</h3>
+  <ul style="margin:0;padding-left:18px;font-size:14px">{hi}</ul>
+  <p style="margin:24px 0 0;color:#94A3B8;font-size:12px">Ordia impara il tuo gestionale per eliminare la digitazione degli ordini.</p>
+</div>"""
+    return subject, html
+
+@api.get("/bridge/weekly-summary")
+async def weekly_summary_preview(user: dict = Depends(get_current_user)):
+    return await build_weekly_summary(user["company_id"])
+
+class SummarySendBody(BaseModel):
+    recipient_email: Optional[str] = None
+
+@api.post("/bridge/weekly-summary/send")
+async def weekly_summary_send(body: SummarySendBody, user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=400, detail="Integrazione email non configurata. Aggiungi RESEND_API_KEY.")
+    company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+    s = await build_weekly_summary(user["company_id"])
+    subject, html = render_summary_email(company.get("name") or "la tua azienda", s)
+    to = body.recipient_email or user["email"]
+    try:
+        await asyncio.to_thread(resend.Emails.send,
+                                {"from": SENDER_EMAIL, "to": [to], "subject": subject, "html": html})
+    except Exception as e:
+        logger.error("weekly summary send failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Invio non riuscito: {e}")
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": {"last_summary_at": now_iso()}})
+    return {"ok": True, "sent_to": to, "summary": s}
+
+async def weekly_summary_loop():
+    """Autonomous weekly digest to company admins. Off by default (test-mode Resend
+    only delivers to the account inbox); enable with BRIDGE_WEEKLY_SUMMARY=1."""
+    if os.environ.get("BRIDGE_WEEKLY_SUMMARY", "0") != "1" or not RESEND_API_KEY:
+        return
+    while True:
+        try:
+            week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+            company_ids = await db.bridge_agents.distinct("company_id", {"paired": True})
+            for cid in company_ids:
+                company = await db.companies.find_one({"id": cid}, {"_id": 0}) or {}
+                if company.get("last_summary_at") and company["last_summary_at"] > week_ago:
+                    continue
+                admin = await db.users.find_one({"company_id": cid, "role": "admin"}, {"_id": 0})
+                if not admin:
+                    continue
+                s = await build_weekly_summary(cid)
+                subject, html = render_summary_email(company.get("name") or "la tua azienda", s)
+                try:
+                    await asyncio.to_thread(resend.Emails.send,
+                        {"from": SENDER_EMAIL, "to": [admin["email"]], "subject": subject, "html": html})
+                    await db.companies.update_one({"id": cid}, {"$set": {"last_summary_at": now_iso()}})
+                except Exception as e:
+                    logger.warning("weekly summary loop send failed for %s: %s", cid, e)
+        except Exception as e:
+            logger.warning("weekly_summary_loop error: %s", e)
+        await asyncio.sleep(6 * 3600)
+
+
 @api.get("/bridge/master-data")
 async def get_master_data(user: dict = Depends(get_current_user)):
     docs = await db.erp_master_data.find(
