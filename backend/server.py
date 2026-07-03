@@ -1952,6 +1952,8 @@ NOTIF_META = {
     "bridge_delivered":      {"priority": "low",    "title": "Consegnato nel gestionale", "action": "Nessuna azione necessaria"},
     "bridge_exception":      {"priority": "high",   "title": "Consegna Bridge fallita",   "action": "Rivedi e riprova la consegna"},
     "adapter_pending":       {"priority": "high",   "title": "ERP appreso — conferma",    "action": "Conferma l'ordine di prova per attivare"},
+    "bridge_learning":       {"priority": "low",    "title": "Bridge in apprendimento",   "action": "Nessuna azione — sta imparando il tuo gestionale"},
+    "bridge_ready":          {"priority": "high",   "title": "Bridge pronto a inserire gli ordini", "action": "Attiva l'inserimento automatico nel gestionale"},
 }
 
 async def create_notification(company_id, ntype, *, customer_name=None, order_id=None,
@@ -2478,7 +2480,83 @@ def _agent_public(a: dict) -> dict:
     a = dict(a)
     if a.get("token"):
         a["token"] = mask_secret(a["token"])
+    a.setdefault("maturity", "learning" if a.get("paired") else "unpaired")
+    a.setdefault("readiness", 0.0)
+    a.setdefault("dry_runs", 0)
     return a
+
+# ---- Bridge maturity lifecycle: the agent LEARNS before it writes for real ----
+# A freshly paired Bridge starts in "learning" (shadow) mode: approved orders are
+# delivered as test/draft while it learns the ERP format, syncs master-data, and
+# accumulates successful dry-runs. When its readiness score crosses the threshold,
+# it is promoted to "ready" and the operator is notified to activate auto-insertion.
+BRIDGE_DRY_RUN_TARGET = 5      # successful shadow deliveries to fully trust the flow
+BRIDGE_OBS_DAYS = 7           # observation window (a bonus signal, not a hard gate)
+BRIDGE_READY_THRESHOLD = 0.85  # readiness needed to offer auto-insertion
+
+async def compute_readiness(agent: dict) -> dict:
+    """Signal-driven readiness (0..1). Real learning signals dominate; calendar time
+    is only a small bonus so a well-fed Bridge can be ready without waiting arbitrarily."""
+    company_id = agent["company_id"]
+    active_adapter = await db.erp_adapters.find_one({"status": "active"}, {"_id": 0})
+    format_known = bool(agent.get("profile_id")) or bool(active_adapter)
+    md_kinds = await db.erp_master_data.distinct("kind", {"company_id": company_id})
+    has_customers = "customer" in md_kinds
+    has_products = "product" in md_kinds
+    dry_runs = agent.get("dry_runs", 0) or 0
+    dry_ratio = min(dry_runs / BRIDGE_DRY_RUN_TARGET, 1.0)
+    started = agent.get("learning_started_at") or agent.get("paired_at")
+    days = 0.0
+    if started:
+        try:
+            days = (datetime.now(timezone.utc) - datetime.fromisoformat(started)).total_seconds() / 86400
+        except Exception:
+            days = 0.0
+    obs_ratio = min(days / BRIDGE_OBS_DAYS, 1.0) if BRIDGE_OBS_DAYS else 1.0
+    score = (0.35 * (1.0 if format_known else 0.0)
+             + 0.15 * (1.0 if has_customers else 0.0)
+             + 0.10 * (1.0 if has_products else 0.0)
+             + 0.30 * dry_ratio
+             + 0.10 * obs_ratio)
+    checklist = [
+        {"key": "format", "label": "Formato del gestionale appreso", "done": format_known,
+         "detail": "Profilo di export o adapter ERP attivo"},
+        {"key": "customers", "label": "Anagrafica clienti sincronizzata", "done": has_customers,
+         "detail": "Import codici cliente dall'ERP"},
+        {"key": "products", "label": "Anagrafica prodotti sincronizzata", "done": has_products,
+         "detail": "Import codici articolo/SKU dall'ERP"},
+        {"key": "dry_runs", "label": f"Ordini di prova riusciti ({dry_runs}/{BRIDGE_DRY_RUN_TARGET})",
+         "done": dry_runs >= BRIDGE_DRY_RUN_TARGET, "progress": round(dry_ratio, 2),
+         "detail": "Consegne in modalità apprendimento andate a buon fine"},
+        {"key": "observation", "label": f"Periodo di osservazione ({int(days)}/{BRIDGE_OBS_DAYS} giorni)",
+         "done": obs_ratio >= 1.0, "progress": round(obs_ratio, 2),
+         "detail": "Il Bridge osserva prima di scrivere per davvero"},
+    ]
+    return {"score": round(score, 3), "checklist": checklist,
+            "dry_runs": dry_runs, "days_observed": round(days, 1),
+            "threshold": BRIDGE_READY_THRESHOLD}
+
+async def recompute_readiness(agent_id: str):
+    agent = await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0})
+    if not agent or not agent.get("paired"):
+        return None
+    r = await compute_readiness(agent)
+    update = {"readiness": r["score"], "readiness_updated_at": now_iso()}
+    promoted = agent.get("maturity") == "learning" and r["score"] >= BRIDGE_READY_THRESHOLD
+    if promoted:
+        update["maturity"] = "ready"
+        update["ready_at"] = now_iso()
+    await db.bridge_agents.update_one({"id": agent_id}, {"$set": update})
+    if promoted:
+        await create_notification(agent["company_id"], "bridge_ready",
+            detail=f"{agent.get('erp_name') or agent.get('name')}: ha imparato abbastanza, pronto a inserire gli ordini automaticamente")
+    return r
+
+async def recompute_company_agents(company_id: str):
+    ids = await db.bridge_agents.distinct(
+        "id", {"company_id": company_id, "maturity": {"$in": ["learning", "ready"]}})
+    for aid in ids:
+        await recompute_readiness(aid)
 
 class AgentCreate(BaseModel):
     name: str = "Ordia Bridge"
@@ -2501,7 +2579,7 @@ async def create_bridge_agent(body: AgentCreate, user: dict = Depends(get_curren
         "id": str(uuid.uuid4()), "company_id": user["company_id"], "name": body.name,
         "erp_name": body.erp_name, "profile_id": body.profile_id,
         "pairing_code": code, "token": None, "paired": False, "active": True,
-        "status": "unpaired", "last_seen": None, "created_at": now_iso(),
+        "status": "unpaired", "maturity": "unpaired", "last_seen": None, "created_at": now_iso(),
     }
     await db.bridge_agents.insert_one(dict(doc))
     doc.pop("_id", None)
@@ -2517,6 +2595,46 @@ async def update_bridge_agent(agent_id: str, body: AgentUpdate, user: dict = Dep
     require_privileged(user)
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     res = await db.bridge_agents.update_one({"id": agent_id, "company_id": user["company_id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Agente non trovato")
+    if "profile_id" in update:
+        await recompute_readiness(agent_id)
+    return _agent_public(await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0}))
+
+@api.get("/bridge/agents/{agent_id}/readiness")
+async def get_agent_readiness(agent_id: str, user: dict = Depends(get_current_user)):
+    agent = await db.bridge_agents.find_one({"id": agent_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente non trovato")
+    r = await compute_readiness(agent)
+    if agent.get("paired"):
+        await recompute_readiness(agent_id)
+        agent = await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0})
+    return {"agent": _agent_public(agent), **r}
+
+@api.post("/bridge/agents/{agent_id}/activate")
+async def activate_bridge_agent(agent_id: str, user: dict = Depends(get_current_user)):
+    """Operator turns learning/ready Bridge into live auto-insertion. Guarded by readiness."""
+    require_privileged(user)
+    agent = await db.bridge_agents.find_one({"id": agent_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente non trovato")
+    if agent.get("maturity") != "ready":
+        r = await compute_readiness(agent)
+        if r["score"] < BRIDGE_READY_THRESHOLD:
+            raise HTTPException(status_code=400,
+                detail="Il Bridge non ha ancora imparato abbastanza per l'inserimento automatico")
+    await db.bridge_agents.update_one({"id": agent_id},
+        {"$set": {"maturity": "active", "activated_at": now_iso()}})
+    return _agent_public(await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0}))
+
+@api.post("/bridge/agents/{agent_id}/pause")
+async def pause_bridge_agent(agent_id: str, user: dict = Depends(get_current_user)):
+    """Send an active Bridge back to learning (shadow) mode — orders stop being written for real."""
+    require_privileged(user)
+    res = await db.bridge_agents.update_one(
+        {"id": agent_id, "company_id": user["company_id"], "paired": True},
+        {"$set": {"maturity": "learning"}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Agente non trovato")
     return _agent_public(await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0}))
@@ -2540,7 +2658,11 @@ async def bridge_pair(body: PairBody):
     token = secrets.token_urlsafe(32)
     await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {
         "token": token, "paired": True, "status": "online", "pairing_code": None,
-        "paired_at": now_iso(), "last_seen": now_iso()}})
+        "paired_at": now_iso(), "last_seen": now_iso(),
+        "maturity": "learning", "learning_started_at": now_iso(),
+        "dry_runs": 0, "readiness": 0.0}})
+    await create_notification(agent["company_id"], "bridge_learning",
+        detail=f"{agent.get('erp_name') or agent.get('name')}: accoppiato, ora impara il tuo gestionale")
     return {"agent_id": agent["id"], "company_id": agent["company_id"],
             "name": agent["name"], "token": token}
 
@@ -2578,6 +2700,7 @@ async def enqueue_bridge_delivery(company_id: str, order: dict):
         "order_id": order["id"], "customer_name": order.get("customer_name"),
         "profile_id": agent.get("profile_id"), "erp_name": agent.get("erp_name"),
         "standard_order": std, "rendered": rendered, "rendered_format": rendered_format,
+        "mode": "live" if agent.get("maturity") == "active" else "shadow",
         "status": "pending", "attempts": 0, "result": None, "error": None,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -2612,13 +2735,22 @@ async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agen
                  "result": body.result, "error": body.error, "updated_at": now_iso()},
         "$inc": {"attempts": 1}})
     if delivered:
-        await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
-            "$set": {"status": "exported", "updated_at": now_iso()},
-            "$push": {"history": history_entry("Consegnato nel gestionale (Bridge)", "bridge",
-                                               agent.get("erp_name") or agent["name"])}})
-        await create_notification(agent["company_id"], "bridge_delivered",
-                                  customer_name=job.get("customer_name"), order_id=job["order_id"],
-                                  detail=f"Consegnato in {agent.get('erp_name') or 'gestionale'}")
+        if job.get("mode") == "shadow":
+            # Learning mode: this was a test/draft insertion, not the final order.
+            # Count it toward readiness; never mark the order as exported.
+            await db.bridge_agents.update_one({"id": agent["id"]}, {"$inc": {"dry_runs": 1}})
+            await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
+                "$push": {"history": history_entry("Consegna di prova nel gestionale (apprendimento Bridge)",
+                                                   "bridge", agent.get("erp_name") or agent["name"])}})
+            await recompute_readiness(agent["id"])
+        else:
+            await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
+                "$set": {"status": "exported", "updated_at": now_iso()},
+                "$push": {"history": history_entry("Consegnato nel gestionale (Bridge)", "bridge",
+                                                   agent.get("erp_name") or agent["name"])}})
+            await create_notification(agent["company_id"], "bridge_delivered",
+                                      customer_name=job.get("customer_name"), order_id=job["order_id"],
+                                      detail=f"Consegnato in {agent.get('erp_name') or 'gestionale'}")
     else:
         await create_notification(agent["company_id"], "bridge_exception",
                                   customer_name=job.get("customer_name"), order_id=job["order_id"],
@@ -2718,6 +2850,7 @@ async def confirm_adapter(adapter_id: str, user: dict = Depends(get_current_user
                                       "verified_by": user["company_id"], "updated_at": now_iso()}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Adapter non trovato")
+    await recompute_company_agents(user["company_id"])
     return await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
 
 @api.put("/bridge/adapters/{adapter_id}/heal")
@@ -2745,6 +2878,7 @@ async def upsert_master_data(body: MasterDataBody, agent: dict = Depends(get_cur
     await db.erp_master_data.update_one(
         {"company_id": agent["company_id"], "erp_key": body.erp_key, "kind": body.kind},
         {"$set": doc}, upsert=True)
+    await recompute_company_agents(agent["company_id"])
     return {"ok": True, "kind": body.kind, "count": len(body.entries)}
 
 @api.get("/bridge/master-data")

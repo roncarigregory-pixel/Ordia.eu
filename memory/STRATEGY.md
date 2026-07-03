@@ -55,3 +55,19 @@ NON il transport (commodity). Il moat è: **dataset di Adapter/Template Profile 
 - Fase 2: SFTP/watched-folder drop + listing iPaaS.
 - Fase 3: connettori cloud nativi (Business Central → SAP B1).
 - Fase 4 (flagship): **Ordia Bridge** (cloud relay + agente NAS/appliance + coda-fallback), poi RPA-lite auto-configurante + browser extension.
+
+## Ciclo di vita del Bridge — "impara prima di scrivere" (luglio 2026)
+> Principio guida per i 4 rischi (fragilità RPA, fiducia, deploy, master-data):
+> **l'AI propone, il sistema misura la propria confidenza e agisce solo quando è sicuro; altrimenti degrada con grazia (bozza → review → fallback) e impara dalla correzione.**
+
+Il Bridge NON è operativo appena installato. Attraversa stati di maturità:
+- `unpaired` → creato, in attesa del codice.
+- `learning` (shadow) → dopo il pairing. Gli ordini approvati sono consegnati come **bozze di prova** (mai come ordini finali). Accumula segnali: formato appreso, anagrafiche sincronizzate, ordini di prova riusciti, periodo di osservazione.
+- `ready` → readiness ≥ 0.85 → notifica "Bridge pronto a inserire gli ordini". L'operatore attiva.
+- `active` → inserimento automatico reale.
+- (pausa) → può tornare a `learning` in qualsiasi momento.
+
+**Readiness score** (segnali reali dominano; il tempo è solo un bonus):
+formato 0.35 · clienti 0.15 · prodotti 0.10 · ordini-di-prova(0..5) 0.30 · osservazione(0..7g) 0.10.
+Implementato in `compute_readiness` / `recompute_readiness`. Endpoint: `GET /bridge/agents/{id}/readiness`, `POST /bridge/agents/{id}/activate` (guardato dalla soglia), `POST /bridge/agents/{id}/pause`. I job portano `mode: shadow|live`; gli ack shadow incrementano `dry_runs` e non marcano l'ordine come esportato.
+

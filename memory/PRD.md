@@ -149,6 +149,16 @@ Script agente: agent.py (3 canali), rpa_odoo.py, rpa_learn.py, rpa_replay.py, od
 - **Canale live `rpa_learned` in agent.py**: risolve l'adapter active dal backend → consegna via `replay_with_healing` (self-healing) → riporta success/failure (metriche). Provato live E2E: ordine approvato → coda → agente risolve v2 → crea ordine reale **S00021** in Odoo → ack → metriche aggiornate (v2 deliveries:1 succ:1). Il replay ora ha default strutturali (login/new_order/save) → robusto anche con spec minimale.
 - `bridge_agent/setup_odoo.sh` ora scrive `odoo.conf` (reinstall affidabile dopo i restart effimeri del pod).
 
+## ✅ Bridge — ciclo di vita "impara prima di scrivere" (2026-07-03)
+Risolve i 4 rischi commerciali (fragilità RPA, fiducia, deploy, master-data) con un onboarding realistico: il Bridge NON è operativo appena installato, matura nel tempo sui segnali reali e avvisa quando è pronto.
+- **Stati di maturità** su `bridge_agents.maturity`: `unpaired` → `learning` (shadow: ordini consegnati come **bozze di prova**, mai finali) → `ready` (readiness ≥ 0.85 → notifica) → `active` (inserimento automatico reale). Pausa: torna a `learning`.
+- **Readiness score** (`compute_readiness`/`recompute_readiness`): formato 0.35 · clienti 0.15 · prodotti 0.10 · ordini-di-prova(0..5) 0.30 · osservazione(0..7g) 0.10. Segnali reali dominano; il tempo è solo un bonus (testabile).
+- **Delivery mode**: i `delivery_jobs` portano `mode: shadow|live` (live solo se `maturity==active`). Ack shadow → `dry_runs++`, ordine NON marcato esportato, recompute readiness. Ack live → comportamento esistente.
+- Endpoint: `GET /bridge/agents/{id}/readiness`, `POST /bridge/agents/{id}/activate` (guardato dalla soglia), `POST /bridge/agents/{id}/pause`. Recompute agganciato a: ack shadow, upsert master-data, confirm adapter, cambio profilo agente.
+- Notifiche nuove: `bridge_learning` (al pairing), `bridge_ready` (promozione). Agente di riferimento `agent.py` ora mode-aware.
+- UI `BridgeSetup.js`: badge maturità, barra readiness % + checklist per-agente, banner "pronto" con bottone **Attiva inserimento automatico**, banner attivo con **Rimetti in apprendimento**.
+- **Test E2E (curl+mongo+agent) PASSATO**: pairing→learning 0.6 → 5 ack shadow → 0.9 auto-promosso `ready` + notifica `bridge_ready` → activate → `active`; guard blocca l'activate di un Bridge sotto soglia; pause riporta a `learning`. Smoke UI verificato (badge/barra/checklist renderizzati).
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.

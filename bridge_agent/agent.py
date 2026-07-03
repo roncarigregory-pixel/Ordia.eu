@@ -135,11 +135,14 @@ def cycle(backend, token, config):
     if jobs:
         print(f"[poll] {len(jobs)} job(s) claimed")
     for job in jobs:
+        mode = job.get("mode", "live")
         try:
             result = deliver(job, config, backend, token)
+            result = {**result, "mode": mode}
             _req("POST", f"{backend}/api/bridge/relay/ack",
                  {"job_id": job["id"], "status": "delivered", "result": result}, headers=headers)
-            print(f"[ack] delivered {job['id']}")
+            print(f"[ack] delivered {job['id']} (mode={mode}"
+                  f"{' — apprendimento/bozza' if mode == 'shadow' else ''})")
         except Exception as e:
             _req("POST", f"{backend}/api/bridge/relay/ack",
                  {"job_id": job["id"], "status": "exception", "error": str(e)}, headers=headers)
