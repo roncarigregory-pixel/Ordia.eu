@@ -4,7 +4,7 @@ import { SetupBack, Field, inputCls } from "./_shared";
 import { toast } from "sonner";
 import {
   Radio, Plus, Trash, UploadSimple, CheckCircle, Copy, ArrowsClockwise, Cpu,
-  GraduationCap, Circle, Lightning, PauseCircle,
+  GraduationCap, Circle, Lightning, PauseCircle, Notebook, WifiSlash,
 } from "@phosphor-icons/react";
 
 const SOURCE_OPTIONS = [
@@ -48,8 +48,32 @@ function ReadinessPanel({ readiness }) {
   );
 }
 
-function AgentCard({ agent, profiles, readiness, onChange, onDelete, onActivate, onPause }) {
+function BridgeDiary({ diary }) {
+  if (!diary || diary.length === 0) return null;
+  return (
+    <div data-testid="bridge-diary" className="mt-3 rounded-md border border-border bg-white p-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Notebook size={15} className="text-ai" />
+        <span className="text-xs font-semibold text-foreground">Diario del Bridge</span>
+      </div>
+      <ul className="space-y-1.5 max-h-44 overflow-y-auto">
+        {diary.slice(0, 8).map((e) => (
+          <li key={e.id} data-testid={`diary-event-${e.id}`} className="flex items-start gap-2 text-xs">
+            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-ai/60" />
+            <span className="text-muted-foreground">
+              <span className="text-foreground">{e.message}</span>
+              <span className="block text-[10px] text-slate-400">{new Date(e.created_at).toLocaleString("it-IT")}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause }) {
   const online = agent.status === "online" && agent.last_seen;
+  const offline = agent.paired && agent.status === "offline";
   const maturity = agent.paired ? (agent.maturity || "learning") : "unpaired";
   const m = MATURITY[maturity] || MATURITY.unpaired;
   const MIcon = m.icon;
@@ -62,6 +86,11 @@ function AgentCard({ agent, profiles, readiness, onChange, onDelete, onActivate,
           <span data-testid={`bridge-maturity-${agent.id}`} className={`flex items-center gap-1 text-xs rounded-full px-2 py-0.5 ${m.cls}`}>
             <MIcon size={12} weight="fill" /> {m.label}
           </span>
+          {offline && (
+            <span data-testid={`bridge-offline-${agent.id}`} className="flex items-center gap-1 text-xs rounded-full bg-red-50 px-2 py-0.5 text-red-500">
+              <WifiSlash size={12} weight="fill" /> Offline
+            </span>
+          )}
         </div>
         <button data-testid={`bridge-agent-delete-${agent.id}`} onClick={() => onDelete(agent.id)} className="text-slate-400 hover:text-red-500">
           <Trash size={16} />
@@ -93,6 +122,8 @@ function AgentCard({ agent, profiles, readiness, onChange, onDelete, onActivate,
       </div>
 
       {agent.paired && maturity !== "active" && <ReadinessPanel readiness={readiness} />}
+
+      {agent.paired && <BridgeDiary diary={diary} />}
 
       {agent.paired && maturity === "learning" && (
         <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
@@ -137,6 +168,7 @@ export default function BridgeSetup() {
   const [adapters, setAdapters] = useState([]);
   const [masterData, setMasterData] = useState([]);
   const [readiness, setReadiness] = useState({});
+  const [diary, setDiary] = useState({});
   const [proposed, setProposed] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -146,6 +178,9 @@ export default function BridgeSetup() {
       data.filter((a) => a.paired).forEach((a) => {
         api.get(`/bridge/agents/${a.id}/readiness`)
           .then(({ data: r }) => setReadiness((prev) => ({ ...prev, [a.id]: r })))
+          .catch(() => {});
+        api.get(`/bridge/agents/${a.id}/diary`)
+          .then(({ data: d }) => setDiary((prev) => ({ ...prev, [a.id]: d })))
           .catch(() => {});
       });
     }).catch(() => {});
@@ -283,7 +318,7 @@ export default function BridgeSetup() {
         <div className="space-y-3">
           {agents.length === 0
             ? <p className="text-sm text-muted-foreground rounded-md border border-dashed border-border p-6 text-center">Nessun agente. Creane uno per iniziare.</p>
-            : agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} />)}
+            : agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} diary={diary[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} />)}
         </div>
       </section>
 

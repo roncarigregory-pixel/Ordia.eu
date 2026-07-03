@@ -10,12 +10,40 @@ import asyncio
 import json
 import os
 import sys
+import hashlib
 from playwright.async_api import async_playwright
 
 HERE = os.path.dirname(__file__)
 PROFILE = os.path.join(HERE, "adapter_profile.json")
 SHOTS = os.path.join(HERE, "rpa_shots")
 os.makedirs(SHOTS, exist_ok=True)
+
+
+class PreflightMismatch(Exception):
+    """The live screen does not match the learned adapter — refuse to type data."""
+
+
+async def _preflight(page, profile: dict):
+    """Verify we are on the expected screen BEFORE mutating anything. If the learned
+    UI signature no longer matches (ERP changed/updated), raise so healing kicks in.
+    This is what keeps the RPA from 'spraying data at the wrong screen'."""
+    cust_sel = f'.o_field_widget[name="{profile["customer_field"]}"] input'
+    try:
+        await page.locator(cust_sel).first.wait_for(state="visible", timeout=8000)
+    except Exception:
+        raise PreflightMismatch(f"campo cliente '{profile['customer_field']}' non trovato")
+    expected = profile.get("ui_fingerprint")
+    if expected:
+        names = await page.eval_on_selector_all(
+            ".o_field_widget[name]",
+            "els => Array.from(new Set(els.map(e => e.getAttribute('name')).filter(Boolean))).sort()")
+        live_fp = hashlib.sha1("|".join(names).encode()).hexdigest()[:16]
+        if live_fp != expected:
+            learned = set(profile.get("field_names") or [])
+            overlap = (len(learned & set(names)) / len(learned)) if learned else 1.0
+            if overlap < 0.6:
+                raise PreflightMismatch(
+                    f"impronta UI cambiata (overlap {int(overlap*100)}%) — riapprendo")
 
 
 def _map(v, mapping, default):
@@ -65,6 +93,8 @@ async def replay(profile: dict, std_order: dict, cfg: dict) -> dict:
             await page.wait_for_timeout(2000)
             await page.locator(new_button_sel).first.click()
             await page.wait_for_timeout(2500)
+
+            await _preflight(page, profile)  # refuse to type if this isn't the right screen
 
             await page.locator(cust_sel).first.click(timeout=8000)
             await _pick(page, customer)

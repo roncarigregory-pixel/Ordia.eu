@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 13 — Backend-only exhaustive coverage of the Ordia Bridge LEARNING LIFECYCLE + resilience + observability (pairing/maturity/readiness/shadow-promotion/activation-guard/pause/durable-queue-retry/offline-wake/adapter-circuit-breaker/diary). Built /app/backend/tests/test_iter13_bridge_lifecycle.py (13 tests, 8 classes) — ALL 13 PASSED (twice, back-to-back). Test suite creates a throwaway paired 'TEST_iter13 ...' agent, temporarily deactivates the demo NAS Bridge so enqueue picks the test agent, and cleans everything up (test agents/adapters/jobs deleted, NAS Bridge active-flag restored, mutated order statuses rolled back).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_bridge_lifecycle.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 3048 lines — still monolithic. Bridge lifecycle (~600 lines) is a clean candidate to split into /app/backend/bridge/{lifecycle,queue,adapters,diary}.py. Not blocking, but every future review flags this and the number keeps growing.",
+    "CORS: `allow_credentials=False` with `allow_origins=os.environ.get('CORS_ORIGINS','*').split(',')` — default '*'. Cookie-based auth relies on withCredentials=true from the SPA; browsers reject credentialed requests when origin='*'. Because iter12 confirmed the app also works via the in-memory Bearer path this is not currently user-visible, but the setup is inconsistent (login sets an HttpOnly cookie the SPA cannot use in the '*' credentialed case). Consider setting allow_credentials=True with an explicit CORS_ORIGINS list.",
+    "enqueue_bridge_delivery picks the FIRST paired+active agent per company (find_one). If a company ever has >1 active paired agent (e.g. redundancy), only one gets jobs. Consider fan-out or a round-robin strategy, or document that only one paired-active agent per company is supported.",
+    "compute_readiness treats ANY globally active adapter as 'format_known' regardless of erp_key match against the agent. This means a company using ERP-A can appear format-ready because ERP-B has an active adapter. Not exploited by the demo, but the coupling is loose — filter by matching erp_key when the agent has one set.",
+    "shadow ack: dry_runs increments via $inc but recompute_readiness is called immediately after, using the pre-increment agent doc that we just fetched? No — read shows recompute_readiness re-fetches via find_one so this is fine. Verified in tests: 5 acks -> dry_runs=5 -> promoted.",
+    "adapter circuit-breaker uses ADAPTER_CB_MIN_RATE=0.85 strict less-than. Because we push 's'/'f' AFTER the $inc but BEFORE the rate check within the same request, edge case: exactly rate=0.85 does NOT trip. Behaviour matches spec (< not <=).",
+    "bridge_relay_ack ack for a 'delivered' job does NOT check if the job is already 'delivered' — repeated acks would double-increment dry_runs. Consider idempotency (only increment on status transition pending/claimed -> delivered). Not exercised in the demo flow but worth guarding."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_bridge_lifecycle.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13)",
+    "frontend": "N/A (backend-only per review request)"
+  },
+  "test_credentials": "demo@ordia.app / demo123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "During each run: 1 throwaway paired bridge agent (name 'TEST_iter13 ...'), 1 throwaway adapter (erp_key 'testerp/<hex6>'), a handful of shadow delivery_jobs, and a set of validated orders. All cleaned up on teardown. The demo NAS Bridge active-flag is toggled off during the test module and restored at teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bridge lifecycle suite is at /app/backend/tests/test_iter13_bridge_lifecycle.py. Run with `REACT_APP_BACKEND_URL=<public> MONGO_URL=mongodb://localhost:27017 DB_NAME=test_database pytest backend/tests/test_iter13_bridge_lifecycle.py -n 0`. IMPORTANT: pytest.ini pins xdist -n 2 loadscope, but this suite requires serial (`-n 0`) because it mutates shared demo state (NAS Bridge active-flag, order statuses) and relies on ordered class execution (Shadow-promotion must precede Activate/Pause). The suite is idempotent — it deactivates existing paired agents and restores them; it uses erp_key='testerp/<hex>' so demo Odoo adapters are never touched. If a run is interrupted, orphan cleanup: `db.erp_adapters.delete_many({'erp_key': {'$regex': '^testerp/'}})` and `db.bridge_agents.delete_many({'name': {'$regex': '^TEST_'}})`. All 12 features enumerated in the review request are covered (see class names).",
+  "rca of the issue": "N/A — no regressions detected. During initial dev-run 5 tests errored with `RuntimeError: Event loop is closed` because a single session-scoped Motor client was reused across successive `asyncio.run(...)` calls (which close the loop). Fixed by refactoring the `_run(coro_factory)` helper to spin up a fresh Motor client inside each call. All 13 tests then passed on two consecutive runs, and demo workspace was left clean (only demo NAS Bridge + 2 Odoo adapters present, matching pre-test state)."
+}

@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import sys
+import hashlib
 import urllib.request
 import urllib.error
 from playwright.async_api import async_playwright
@@ -97,6 +98,11 @@ async def learn_adapter(url):
     m["new_button_sel"] = "button.o_list_button_add, .o_control_panel button:has-text('New')"
     m["save_sel"] = "button.o_form_button_save, .o_form_button_save"
     m["_discovered_fields"] = len(inv)
+    # UI fingerprint: a stable signature of the form's field names so the replay
+    # engine can PRE-FLIGHT verify it is on the right screen before typing anything.
+    names = sorted([f["name"] for f in inv if f.get("name")])
+    m["field_names"] = names
+    m["ui_fingerprint"] = hashlib.sha1("|".join(names).encode()).hexdigest()[:16]
     return m
 
 

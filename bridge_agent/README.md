@@ -38,3 +38,29 @@ Passando un file JSON con l'ordine canonico come primo argomento, la RPA usa que
   (import liste codici) che porta l'affidabilità dal 90% al "sicuro".
 - RPA è l'ultima spiaggia (Class D, ERP UI-only). Per ERP con API/file si usano i
   canali più stabili (connettore cloud, file+trigger) prima dell'RPA.
+
+## Deploy on-prem (Fase 2 — container)
+Un solo comando su NAS/mini-PC del cliente. **Outbound-only**: nessuna porta aperta, nessun IT.
+```bash
+# 1) crea l'agente in Ordia (Configurazione → Bridge) e copia il codice a 6 cifre
+# 2) sul dispositivo del cliente:
+ORDIA_BACKEND=https://app.ordia.app ORDIA_PAIR_CODE=123456 docker compose up -d
+```
+Il container (`Dockerfile` + `docker-compose.yml` + `entrypoint.sh`) include Playwright+Chromium,
+persiste il token e la config di consegna in `./data` (le credenziali ERP restano ON-PREM),
+ha un `HEALTHCHECK` e `restart: unless-stopped`.
+
+**Ciclo di vita**: dopo il pairing l'agente entra in **apprendimento** (le consegne sono bozze
+di prova), matura da solo e Ordia avvisa quando è **pronto** all'inserimento automatico.
+
+**Self-update firmato** (opt-in, `ORDIA_SELF_UPDATE=1`): scarica il bundle agente + firma dal
+cloud e lo applica **solo** dopo verifica `openssl` con chiave pubblica pinnata nell'immagine.
+
+**Resilienza**: coda cloud durevole con retry/backoff + TTL; se il dispositivo è spento gli
+ordini restano in coda e vengono consegnati **al risveglio**; heartbeat + rilevamento offline
+proattivo (Ordia avvisa prima che te ne accorga tu).
+
+**Robustezza RPA**: pre-flight sull'impronta della UI (rifiuta di scrivere se lo schermo non
+combacia) + self-healing (riapprende e riprova) + circuit-breaker (adapter poco affidabile →
+quarantena automatica, escluso dalla rete finché non si auto-ripara).
+

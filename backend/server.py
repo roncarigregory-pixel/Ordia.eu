@@ -1954,6 +1954,9 @@ NOTIF_META = {
     "adapter_pending":       {"priority": "high",   "title": "ERP appreso — conferma",    "action": "Conferma l'ordine di prova per attivare"},
     "bridge_learning":       {"priority": "low",    "title": "Bridge in apprendimento",   "action": "Nessuna azione — sta imparando il tuo gestionale"},
     "bridge_ready":          {"priority": "high",   "title": "Bridge pronto a inserire gli ordini", "action": "Attiva l'inserimento automatico nel gestionale"},
+    "bridge_offline":        {"priority": "high",   "title": "Bridge offline",            "action": "Controlla il dispositivo su cui gira il Bridge"},
+    "bridge_recovered":      {"priority": "low",    "title": "Bridge di nuovo online",    "action": "Nessuna azione — riprende le consegne in coda"},
+    "adapter_quarantined":   {"priority": "high",   "title": "ERP in quarantena",         "action": "Il Bridge riapprende l'interfaccia automaticamente"},
 }
 
 async def create_notification(company_id, ntype, *, customer_name=None, order_id=None,
@@ -2550,6 +2553,8 @@ async def recompute_readiness(agent_id: str):
     if promoted:
         await create_notification(agent["company_id"], "bridge_ready",
             detail=f"{agent.get('erp_name') or agent.get('name')}: ha imparato abbastanza, pronto a inserire gli ordini automaticamente")
+        await log_bridge_event(agent["company_id"], agent_id, "ready",
+            "Ho imparato abbastanza: sono pronto a inserire gli ordini nel gestionale")
     return r
 
 async def recompute_company_agents(company_id: str):
@@ -2557,6 +2562,57 @@ async def recompute_company_agents(company_id: str):
         "id", {"company_id": company_id, "maturity": {"$in": ["learning", "ready"]}})
     for aid in ids:
         await recompute_readiness(aid)
+
+# ---- Bridge resilience & observability ------------------------------------
+# Durable delivery queue (retry/backoff/TTL, reclaim), proactive offline
+# detection with delivery-on-wake, adapter circuit-breaker, and a "Bridge diary"
+# so the learning week feels like visible progress, not silence.
+BRIDGE_OFFLINE_MIN = int(os.environ.get("BRIDGE_OFFLINE_MIN", "5"))
+BRIDGE_JOB_MAX_ATTEMPTS = 5
+BRIDGE_JOB_TTL_DAYS = 7
+BRIDGE_CLAIM_TIMEOUT_MIN = 5
+ADAPTER_CB_MIN_DELIVERIES = 5   # data needed before the breaker can trip
+ADAPTER_CB_MIN_RATE = 0.85      # windowed success-rate floor
+ADAPTER_CB_WINDOW = 20          # rolling window of recent outcomes
+
+async def log_bridge_event(company_id: str, agent_id: Optional[str], kind: str, message: str):
+    await db.bridge_events.insert_one({
+        "id": str(uuid.uuid4()), "company_id": company_id, "agent_id": agent_id,
+        "kind": kind, "message": message, "created_at": now_iso()})
+
+def _backoff_seconds(attempts: int) -> int:
+    return min(60 * (2 ** max(attempts - 1, 0)), 3600)
+
+async def mark_agent_online(agent: dict):
+    """Set online; if it was offline, announce recovery + pending backlog (delivery-on-wake)."""
+    if agent.get("status") == "offline":
+        pending = await db.delivery_jobs.count_documents(
+            {"agent_id": agent["id"], "status": {"$in": ["pending", "claimed"]}})
+        await create_notification(agent["company_id"], "bridge_recovered",
+            detail=(f"{pending} ordini in consegna al risveglio" if pending else "Bridge di nuovo online"))
+        await log_bridge_event(agent["company_id"], agent["id"], "recovered",
+            (f"Tornato online — {pending} ordini in coda da consegnare" if pending else "Tornato online"))
+    await db.bridge_agents.update_one({"id": agent["id"]},
+        {"$set": {"last_seen": now_iso(), "status": "online"}})
+
+async def bridge_monitor_loop():
+    """Proactively flag agents that went silent so the operator hears it from Ordia first."""
+    while True:
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=BRIDGE_OFFLINE_MIN)).isoformat()
+            agents = await db.bridge_agents.find(
+                {"paired": True, "status": {"$ne": "offline"},
+                 "maturity": {"$in": ["learning", "ready", "active"]},
+                 "last_seen": {"$lt": cutoff}}, {"_id": 0}).to_list(200)
+            for ag in agents:
+                await db.bridge_agents.update_one({"id": ag["id"]}, {"$set": {"status": "offline"}})
+                await create_notification(ag["company_id"], "bridge_offline",
+                    detail=f"{ag.get('erp_name') or ag.get('name')}: nessun contatto da {BRIDGE_OFFLINE_MIN} min")
+                await log_bridge_event(ag["company_id"], ag["id"], "offline",
+                    "Bridge offline — nessun contatto")
+        except Exception as e:
+            logger.warning("bridge_monitor error: %s", e)
+        await asyncio.sleep(60)
 
 class AgentCreate(BaseModel):
     name: str = "Ordia Bridge"
@@ -2663,6 +2719,8 @@ async def bridge_pair(body: PairBody):
         "dry_runs": 0, "readiness": 0.0}})
     await create_notification(agent["company_id"], "bridge_learning",
         detail=f"{agent.get('erp_name') or agent.get('name')}: accoppiato, ora impara il tuo gestionale")
+    await log_bridge_event(agent["company_id"], agent["id"], "paired",
+        "Accoppiato — inizio l'apprendimento del tuo gestionale")
     return {"agent_id": agent["id"], "company_id": agent["company_id"],
             "name": agent["name"], "token": token}
 
@@ -2701,7 +2759,10 @@ async def enqueue_bridge_delivery(company_id: str, order: dict):
         "profile_id": agent.get("profile_id"), "erp_name": agent.get("erp_name"),
         "standard_order": std, "rendered": rendered, "rendered_format": rendered_format,
         "mode": "live" if agent.get("maturity") == "active" else "shadow",
-        "status": "pending", "attempts": 0, "result": None, "error": None,
+        "status": "pending", "attempts": 0, "max_attempts": BRIDGE_JOB_MAX_ATTEMPTS,
+        "next_attempt_at": now_iso(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=BRIDGE_JOB_TTL_DAYS)).isoformat(),
+        "result": None, "error": None,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.delivery_jobs.insert_one(dict(job))
@@ -2711,11 +2772,20 @@ async def enqueue_bridge_delivery(company_id: str, order: dict):
 
 @api.get("/bridge/relay/poll")
 async def bridge_relay_poll(agent: dict = Depends(get_current_agent)):
-    await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {"last_seen": now_iso(), "status": "online"}})
+    await mark_agent_online(agent)
+    now = now_iso()
+    # Reclaim jobs stuck in 'claimed' (agent died mid-delivery) so they retry.
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=BRIDGE_CLAIM_TIMEOUT_MIN)).isoformat()
+    await db.delivery_jobs.update_many(
+        {"agent_id": agent["id"], "status": "claimed", "claimed_at": {"$lt": stale}},
+        {"$set": {"status": "pending"}})
     jobs = await db.delivery_jobs.find(
-        {"agent_id": agent["id"], "status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(20)
+        {"agent_id": agent["id"], "status": "pending",
+         "$or": [{"next_attempt_at": {"$lte": now}}, {"next_attempt_at": None},
+                 {"next_attempt_at": {"$exists": False}}]},
+        {"_id": 0}).sort("created_at", 1).to_list(20)
     for j in jobs:
-        await db.delivery_jobs.update_one({"id": j["id"]}, {"$set": {"status": "claimed", "claimed_at": now_iso()}})
+        await db.delivery_jobs.update_one({"id": j["id"]}, {"$set": {"status": "claimed", "claimed_at": now}})
     return {"jobs": jobs, "count": len(jobs)}
 
 class AckBody(BaseModel):
@@ -2730,11 +2800,10 @@ async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agen
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
     delivered = body.status == "delivered"
-    await db.delivery_jobs.update_one({"id": job["id"]}, {
-        "$set": {"status": "delivered" if delivered else "exception",
-                 "result": body.result, "error": body.error, "updated_at": now_iso()},
-        "$inc": {"attempts": 1}})
     if delivered:
+        await db.delivery_jobs.update_one({"id": job["id"]}, {
+            "$set": {"status": "delivered", "result": body.result, "error": None, "updated_at": now_iso()},
+            "$inc": {"attempts": 1}})
         if job.get("mode") == "shadow":
             # Learning mode: this was a test/draft insertion, not the final order.
             # Count it toward readiness; never mark the order as exported.
@@ -2742,6 +2811,8 @@ async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agen
             await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
                 "$push": {"history": history_entry("Consegna di prova nel gestionale (apprendimento Bridge)",
                                                    "bridge", agent.get("erp_name") or agent["name"])}})
+            await log_bridge_event(agent["company_id"], agent["id"], "dry_run",
+                f"Preparata una bozza di prova corretta per {job.get('customer_name') or 'un cliente'}")
             await recompute_readiness(agent["id"])
         else:
             await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
@@ -2751,15 +2822,29 @@ async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agen
             await create_notification(agent["company_id"], "bridge_delivered",
                                       customer_name=job.get("customer_name"), order_id=job["order_id"],
                                       detail=f"Consegnato in {agent.get('erp_name') or 'gestionale'}")
-    else:
-        await create_notification(agent["company_id"], "bridge_exception",
-                                  customer_name=job.get("customer_name"), order_id=job["order_id"],
-                                  detail=(body.error or "Consegna non riuscita")[:160])
-    return {"ok": True}
+        return {"ok": True}
+    # Exception: retry with exponential backoff until max attempts / TTL, then fail.
+    attempts = (job.get("attempts", 0) or 0) + 1
+    max_att = job.get("max_attempts", BRIDGE_JOB_MAX_ATTEMPTS)
+    expired = bool(job.get("expires_at")) and job["expires_at"] < now_iso()
+    if attempts < max_att and not expired:
+        backoff = _backoff_seconds(attempts)
+        next_at = (datetime.now(timezone.utc) + timedelta(seconds=backoff)).isoformat()
+        await db.delivery_jobs.update_one({"id": job["id"]}, {
+            "$set": {"status": "pending", "error": body.error, "next_attempt_at": next_at, "updated_at": now_iso()},
+            "$inc": {"attempts": 1}})
+        return {"ok": True, "retry_in": backoff, "attempt": attempts}
+    await db.delivery_jobs.update_one({"id": job["id"]}, {
+        "$set": {"status": "failed", "error": body.error, "updated_at": now_iso()},
+        "$inc": {"attempts": 1}})
+    await create_notification(agent["company_id"], "bridge_exception",
+                              customer_name=job.get("customer_name"), order_id=job["order_id"],
+                              detail=(body.error or "Consegna non riuscita")[:160])
+    return {"ok": True, "failed": True}
 
 @api.post("/bridge/relay/heartbeat")
 async def bridge_relay_heartbeat(agent: dict = Depends(get_current_agent)):
-    await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {"last_seen": now_iso(), "status": "online"}})
+    await mark_agent_online(agent)
     return {"ok": True, "server_time": now_iso()}
 
 @api.get("/bridge/jobs")
@@ -2834,34 +2919,58 @@ class AdapterReport(BaseModel):
 
 @api.post("/bridge/adapters/{adapter_id}/report")
 async def report_adapter_outcome(adapter_id: str, body: AdapterReport, agent: dict = Depends(get_current_agent)):
-    """Agent reports a delivery outcome so metrics drive future adapter selection."""
-    inc = {"deliveries": 1, "successes" if body.status == "success" else "failures": 1}
-    res = await db.erp_adapters.update_one({"id": adapter_id}, {"$inc": inc, "$set": {"last_used": now_iso()}})
-    if res.matched_count == 0:
+    """Agent reports a delivery outcome. Metrics drive future selection AND a circuit
+    breaker: an active adapter whose recent success-rate drops below the floor is
+    auto-quarantined so it stops contaminating the shared network."""
+    ok = body.status == "success"
+    inc = {"deliveries": 1, "successes" if ok else "failures": 1}
+    await db.erp_adapters.update_one({"id": adapter_id}, {
+        "$inc": inc, "$set": {"last_used": now_iso()},
+        "$push": {"recent": {"$each": ["s" if ok else "f"], "$slice": -ADAPTER_CB_WINDOW}}})
+    a = await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
+    if not a:
         raise HTTPException(status_code=404, detail="Adapter non trovato")
+    recent = a.get("recent", []) or []
+    if a.get("status") == "active" and len(recent) >= ADAPTER_CB_MIN_DELIVERIES:
+        rate = recent.count("s") / len(recent)
+        if rate < ADAPTER_CB_MIN_RATE:
+            await db.erp_adapters.update_one({"id": adapter_id},
+                {"$set": {"status": "quarantined", "quarantined_at": now_iso()}})
+            await create_notification(agent["company_id"], "adapter_quarantined",
+                detail=f"{a.get('erp_guess') or a.get('erp_key')}: affidabilità {int(rate*100)}% — messo in quarantena, riapprendo")
+            await log_bridge_event(agent["company_id"], agent["id"], "quarantine",
+                f"Adapter {a.get('erp_key')} in quarantena (affidabilità {int(rate*100)}%)")
     return {"ok": True}
 
 @api.post("/bridge/adapters/{adapter_id}/confirm")
 async def confirm_adapter(adapter_id: str, user: dict = Depends(get_current_user)):
     """Human confirms the test order is correct -> adapter goes ACTIVE (shared)."""
     require_privileged(user)
-    res = await db.erp_adapters.update_one(
+    adapter = await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
+    if not adapter:
+        raise HTTPException(status_code=404, detail="Adapter non trovato")
+    await db.erp_adapters.update_one(
         {"id": adapter_id}, {"$set": {"verified": True, "status": "active",
                                       "verified_by": user["company_id"], "updated_at": now_iso()}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Adapter non trovato")
     await recompute_company_agents(user["company_id"])
+    await log_bridge_event(user["company_id"], None, "adapter_active",
+        f"ERP {adapter.get('erp_guess') or adapter.get('erp_key')} attivato — pronto per le consegne")
     return await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
 
 @api.put("/bridge/adapters/{adapter_id}/heal")
 async def heal_adapter(adapter_id: str, body: AdapterBody, agent: dict = Depends(get_current_agent)):
-    """Self-healing: the agent re-learned the UI (it changed) and pushes an updated spec."""
-    res = await db.erp_adapters.update_one(
-        {"id": adapter_id}, {"$set": {"spec": body.spec, "confidence": body.confidence,
-                                      "updated_at": now_iso(), "healed_at": now_iso()},
-                             "$inc": {"heal_count": 1}})
-    if res.matched_count == 0:
+    """Self-healing: the agent re-learned the UI (it changed) and pushes an updated spec.
+    A quarantined adapter is brought back to active with a fresh outcome window."""
+    adapter = await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
+    if not adapter:
         raise HTTPException(status_code=404, detail="Adapter non trovato")
+    upd = {"spec": body.spec, "confidence": body.confidence,
+           "updated_at": now_iso(), "healed_at": now_iso(), "recent": []}
+    if adapter.get("status") == "quarantined":
+        upd["status"] = "active"
+    await db.erp_adapters.update_one({"id": adapter_id}, {"$set": upd, "$inc": {"heal_count": 1}})
+    await log_bridge_event(agent["company_id"], agent["id"], "healed",
+        f"Interfaccia di {adapter.get('erp_key')} cambiata: mi sono auto-riparato")
     return await db.erp_adapters.find_one({"id": adapter_id}, {"_id": 0})
 
 # ---- Master-data sync (ERP code lists) -> makes mapping "safe" ---------------
@@ -2879,7 +2988,21 @@ async def upsert_master_data(body: MasterDataBody, agent: dict = Depends(get_cur
         {"company_id": agent["company_id"], "erp_key": body.erp_key, "kind": body.kind},
         {"$set": doc}, upsert=True)
     await recompute_company_agents(agent["company_id"])
+    kind_it = {"customer": "clienti", "product": "prodotti/SKU", "tax": "aliquote IVA"}.get(body.kind, body.kind)
+    await log_bridge_event(agent["company_id"], agent["id"], "master_data",
+        f"Imparati {len(body.entries)} {kind_it} dal gestionale")
     return {"ok": True, "kind": body.kind, "count": len(body.entries)}
+
+@api.get("/bridge/agents/{agent_id}/diary")
+async def bridge_diary(agent_id: str, user: dict = Depends(get_current_user)):
+    """The Bridge diary: a human-readable feed of what the agent learned/did, so the
+    learning period feels like visible progress instead of silence."""
+    agent = await db.bridge_agents.find_one({"id": agent_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente non trovato")
+    return await db.bridge_events.find(
+        {"company_id": user["company_id"], "$or": [{"agent_id": agent_id}, {"agent_id": None}]},
+        {"_id": 0}).sort("created_at", -1).to_list(30)
 
 @api.get("/bridge/master-data")
 async def get_master_data(user: dict = Depends(get_current_user)):
@@ -2912,8 +3035,11 @@ async def startup():
     await db.export_profiles.create_index("company_id")
     await db.erp_adapters.create_index([("erp_key", 1), ("version", -1)])
     await db.erp_master_data.create_index([("company_id", 1), ("erp_key", 1), ("kind", 1)])
+    await db.delivery_jobs.create_index([("agent_id", 1), ("status", 1), ("next_attempt_at", 1)])
+    await db.bridge_events.create_index([("company_id", 1), ("agent_id", 1), ("created_at", -1)])
     await seed_demo_workspace()
     asyncio.create_task(email_poll_loop())
+    asyncio.create_task(bridge_monitor_loop())
     logger.info("Ordia API ready.")
 
 @app.on_event("shutdown")

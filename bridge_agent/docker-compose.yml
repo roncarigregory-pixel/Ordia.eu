@@ -1,0 +1,20 @@
+# Ordia Bridge — one-file deploy for a customer NAS / mini-PC / appliance.
+# Install once:
+#   1) ORDIA_PAIR_CODE=123456 ORDIA_BACKEND=https://app.ordia.app docker compose up -d
+#   2) The Bridge pairs, then enters LEARNING mode and matures on its own.
+#   3) When ready, Ordia notifies you to activate auto-insertion. No local UI.
+services:
+  ordia-bridge:
+    image: ordia/bridge-agent:latest
+    build: .
+    container_name: ordia-bridge
+    restart: unless-stopped
+    environment:
+      ORDIA_BACKEND: ${ORDIA_BACKEND:?set your Ordia cloud URL}
+      ORDIA_PAIR_CODE: ${ORDIA_PAIR_CODE:-}
+      ORDIA_BRIDGE_INTERVAL: "5"
+      ORDIA_SELF_UPDATE: "0"
+    volumes:
+      # Pairing token + local delivery config (ERP creds stay ON-PREM, never in cloud).
+      - ./data:/data
+    # Outbound-only: no ports published. Nothing to open on the firewall.

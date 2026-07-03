@@ -1,0 +1,6 @@
+# Ordia Bridge agent — runtime deps.
+# Core agent (pair/poll/deliver/ack) uses only the Python stdlib.
+# Playwright is used only for the RPA (Class D, UI-only ERPs) and ships in the base image.
+playwright==1.48.0
+python-dotenv==1.0.1
+emergentintegrations
