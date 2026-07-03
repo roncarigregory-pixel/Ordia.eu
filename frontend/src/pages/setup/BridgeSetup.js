@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   Radio, Plus, Trash, UploadSimple, CheckCircle, Copy, ArrowsClockwise, Cpu,
   GraduationCap, Circle, Lightning, PauseCircle, Notebook, WifiSlash,
+  ChartLineUp, PaperPlaneTilt,
 } from "@phosphor-icons/react";
 
 const SOURCE_OPTIONS = [
@@ -169,6 +170,7 @@ export default function BridgeSetup() {
   const [masterData, setMasterData] = useState([]);
   const [readiness, setReadiness] = useState({});
   const [diary, setDiary] = useState({});
+  const [summary, setSummary] = useState(null);
   const [proposed, setProposed] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -184,6 +186,7 @@ export default function BridgeSetup() {
           .catch(() => {});
       });
     }).catch(() => {});
+    api.get("/bridge/weekly-summary").then(({ data }) => setSummary(data)).catch(() => {});
     api.get("/export-profiles").then(({ data }) => setProfiles(data)).catch(() => {});
     api.get("/bridge/jobs").then(({ data }) => setJobs(data)).catch(() => {});
     api.get("/bridge/adapters").then(({ data }) => setAdapters(data)).catch(() => {});
@@ -197,6 +200,10 @@ export default function BridgeSetup() {
   };
   const pauseAgent = async (id) => {
     try { await api.post(`/bridge/agents/${id}/pause`); toast.success("Bridge rimesso in apprendimento"); load(); }
+    catch (e) { toast.error(formatApiError(e)); }
+  };
+  const sendSummary = async () => {
+    try { const { data } = await api.post("/bridge/weekly-summary/send", {}); toast.success(`Riepilogo inviato a ${data.sent_to}`); }
     catch (e) { toast.error(formatApiError(e)); }
   };
 
@@ -247,6 +254,33 @@ export default function BridgeSetup() {
       <p className="mt-1 text-sm text-muted-foreground mb-8">
         Gli ordini approvati appaiono direttamente nel tuo gestionale. Installalo una volta: il Bridge <b>impara il tuo gestionale nel tempo</b> e ti avvisa quando è pronto a inserire gli ordini da solo.
       </p>
+
+      {summary && (summary.events_count > 0 || agents.some((a) => a.paired)) && (
+        <div data-testid="bridge-weekly-summary" className="mb-8 rounded-md border border-border bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ChartLineUp size={18} className="text-ai" />
+              <h2 className="font-display text-lg font-bold tracking-tight">Il tuo Bridge questa settimana</h2>
+            </div>
+            <button data-testid="bridge-send-summary" onClick={sendSummary}
+              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-secondary">
+              <PaperPlaneTilt size={15} /> Inviami il riepilogo
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { v: summary.drafts_prepared, l: "bozze di prova corrette" },
+              { v: summary.codes_in_catalog, l: "codici in anagrafica" },
+              { v: summary.self_heals, l: "auto-riparazioni" },
+            ].map((k, i) => (
+              <div key={i} data-testid={`summary-metric-${i}`} className="rounded-md bg-secondary p-3 text-center">
+                <div className="font-display text-2xl font-black text-foreground">{k.v}</div>
+                <div className="text-xs text-muted-foreground">{k.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Template Builder */}
       <section className="mb-10">

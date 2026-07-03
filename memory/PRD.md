@@ -169,6 +169,10 @@ Estende il ciclo di vita risolvendo i 4 rischi commerciali. Testato E2E backend:
 - **Packaging on-prem Fase 2**: `bridge_agent/Dockerfile` (base Playwright, healthcheck, volume /data), `docker-compose.yml` (1 comando, outbound-only), `entrypoint.sh` (pair-once + self-update FIRMATO opt-in con verifica openssl), `requirements.txt`. README aggiornato.
 - ⏸️ **Refactor `server.py` (~3050 righe)**: ancora RIMANDATO di proposito — refactor puro ad alto rischio su app stabile; da fare in sessione dedicata con testing_agent subito dopo. Candidato: `backend/bridge/{lifecycle,queue,adapters,diary}.py`.
 
+## ✅ Riepilogo settimanale email + modularizzazione server.py (2026-07-03)
+- **Riepilogo settimanale del Bridge (engagement/conversione)**: `build_weekly_summary` aggrega gli eventi del diario (7gg) + anagrafiche + stato agenti → `render_summary_email` (HTML brandizzato). Endpoint `GET /bridge/weekly-summary` (anteprima) e `POST /bridge/weekly-summary/send` (invio via Resend, privileged). Loop autonomo `weekly_summary_loop` OFF di default (`BRIDGE_WEEKLY_SUMMARY=1` per attivarlo; Resend in test-mode consegna solo all'inbox dell'account). UI: card "Il tuo Bridge questa settimana" (3 metriche + bottone "Inviami il riepilogo"). Testato: preview + send a `delivered@resend.dev` = ok.
+- **Modularizzazione `server.py` (debito tecnico RISOLTO)**: estratto il blocco Bridge (~650 righe) in `backend/bridge.py` via `setup_bridge(api, ctx)` con **dependency injection** (db, auth deps, helper, notifiche/email passati in ctx; nessuna dipendenza circolare). server.py: 3165 → 2527 righe. Comportamento **identico**: la suite di regressione `test_iter13_bridge_lifecycle.py` = **13/13 PASS**, health ok, endpoint (agents/adapters/summary) ok, dashboard e pagina Bridge renderizzano. `enqueue_bridge_delivery`/`bridge_monitor_loop`/`weekly_summary_loop` ri-esposti come global per compatibilità con validate_order/startup senza altre modifiche.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
@@ -183,9 +187,8 @@ Estende il ciclo di vita risolvendo i 4 rischi commerciali. Testato E2E backend:
 - **Produzione email**: verifica dominio Resend + mittente aziendale.
 
 ## 🧹 Debito tecnico
-- `server.py` ~1750 righe → splittare in `routers/`, `services/`, `models/`.
-- WhatsApp webhook: verifica HMAC X-Hub-Signature-256.
-- Indice Mongo unico (company_id, external_id).
+- ✅ `server.py` modularizzato: blocco Bridge estratto in `backend/bridge.py` (2026-07-03). server.py ~2527 righe. Prossimo (opzionale): splittare ulteriormente auth/orders/erp se cresce.
+- Rate limiting webhook: in-memory per-process → Redis per multi-pod (futuro).
 
 ## Credenziali
 Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123 (pilot mode auto-login).
