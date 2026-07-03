@@ -2161,6 +2161,8 @@ ERP_CONNECTORS = {
                            "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
     "teamsystem":         {"name": "TeamSystem",    "transport": "rest",   "capabilities": ["import_catalog", "import_customers", "export_orders", "sync_status"],
                            "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
+    "florsistemi":        {"name": "Etifood (Flor Sistemi)", "transport": "rest", "capabilities": ["import_catalog", "import_customers", "export_orders", "sync_status"],
+                           "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
 }
 
 def _apply_mappings(payload: dict, mappings: dict) -> dict:
