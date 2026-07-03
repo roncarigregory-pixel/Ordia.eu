@@ -2799,6 +2799,8 @@ async def bridge_relay_ack(body: AckBody, agent: dict = Depends(get_current_agen
     job = await db.delivery_jobs.find_one({"id": body.job_id, "agent_id": agent["id"]}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
+    if job.get("status") in ("delivered", "failed"):
+        return {"ok": True, "already": job["status"]}  # idempotent: no double side-effects
     delivered = body.status == "delivered"
     if delivered:
         await db.delivery_jobs.update_one({"id": job["id"]}, {

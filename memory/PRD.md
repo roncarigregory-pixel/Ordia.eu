@@ -159,6 +159,16 @@ Risolve i 4 rischi commerciali (fragilità RPA, fiducia, deploy, master-data) co
 - UI `BridgeSetup.js`: badge maturità, barra readiness % + checklist per-agente, banner "pronto" con bottone **Attiva inserimento automatico**, banner attivo con **Rimetti in apprendimento**.
 - **Test E2E (curl+mongo+agent) PASSATO**: pairing→learning 0.6 → 5 ack shadow → 0.9 auto-promosso `ready` + notifica `bridge_ready` → activate → `active`; guard blocca l'activate di un Bridge sotto soglia; pause riporta a `learning`. Smoke UI verificato (badge/barra/checklist renderizzati).
 
+## ✅ Bridge — resilienza, circuit-breaker, diario + packaging on-prem (2026-07-03)
+Estende il ciclo di vita risolvendo i 4 rischi commerciali. Testato E2E backend: **iteration_13 = 13/13 (100%)**, nessun issue critico/minore.
+- **Coda durevole (Rischio 3)**: `delivery_jobs` con `max_attempts`(5), `next_attempt_at`, `expires_at`(TTL 7g). Ack `exception` → retry con backoff esponenziale (60s→1h) finché < max/TTL, poi `failed` + notifica. Poll gate su `next_attempt_at<=now` + reclaim job `claimed` bloccati >5min. **Ack idempotente** (job delivered/failed non ri-processato).
+- **Delivery-on-wake + offline proattivo (Rischio 3)**: `bridge_monitor_loop` (60s) marca offline gli agenti silenti >5min + notifica `bridge_offline`. Al ritorno (poll/heartbeat) → `mark_agent_online` notifica `bridge_recovered` con backlog "N ordini in consegna al risveglio".
+- **Circuit-breaker adapter (Rischio 1)**: `report` tiene una finestra `recent` (cap 20); adapter active con ≥5 esiti e success-rate <0.85 → auto-`quarantined` + notifica `adapter_quarantined`; `resolve` esclude i quarantined; `heal` di un quarantined lo riporta active azzerando la finestra.
+- **Pre-flight DOM fingerprint (Rischio 1)**: `rpa_learn` salva `ui_fingerprint`+`field_names`; `rpa_replay._preflight` verifica lo schermo prima di digitare (overlap <60% → `PreflightMismatch` → self-healing).
+- **Diario del Bridge (engagement)**: collezione `bridge_events` + `log_bridge_event`; eventi paired/dry_run/master_data/adapter_active/healed/quarantine/offline/recovered/ready. Endpoint `GET /bridge/agents/{id}/diary`. UI: feed "Diario del Bridge" + badge Offline per-agente.
+- **Packaging on-prem Fase 2**: `bridge_agent/Dockerfile` (base Playwright, healthcheck, volume /data), `docker-compose.yml` (1 comando, outbound-only), `entrypoint.sh` (pair-once + self-update FIRMATO opt-in con verifica openssl), `requirements.txt`. README aggiornato.
+- ⏸️ **Refactor `server.py` (~3050 righe)**: ancora RIMANDATO di proposito — refactor puro ad alto rischio su app stabile; da fare in sessione dedicata con testing_agent subito dopo. Candidato: `backend/bridge/{lifecycle,queue,adapters,diary}.py`.
+
 ## ⏳ Bloccati su credenziali utente (verifica LIVE)
 - **Deploy**: pronto — l'utente avvia dal pulsante Deploy della piattaforma.
 - **Resend dominio**: verificare un dominio su Resend + impostare `SENDER_EMAIL`; ora invii solo a `delivered@resend.dev`.
