@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Radio, Plus, Trash, UploadSimple, CheckCircle, Copy, ArrowsClockwise, Cpu,
   GraduationCap, Circle, Lightning, PauseCircle, Notebook, WifiSlash,
-  ChartLineUp, PaperPlaneTilt,
+  ChartLineUp, PaperPlaneTilt, CaretDown, CaretRight,
 } from "@phosphor-icons/react";
 
 const SOURCE_OPTIONS = [
@@ -19,6 +19,58 @@ const MATURITY = {
   ready:    { label: "Pronto", cls: "bg-blue-50 text-blue-600", icon: Lightning },
   active:   { label: "Attivo", cls: "bg-emerald-50 text-emerald-600", icon: Lightning },
 };
+
+const OP_LABELS = {
+  open_form: "Apri la schermata Nuovo ordine",
+  add_line: "Aggiungi una riga",
+  save: "Salva l'ordine",
+  wait: "Attendi il caricamento",
+};
+const FIELD_LABELS = {
+  customer_name: "Inserisci il Cliente",
+  sku: "Inserisci l'Articolo (codice)",
+  product: "Inserisci l'Articolo",
+  quantity: "Inserisci la Quantità",
+  delivery_date: "Inserisci la data di consegna",
+  notes: "Inserisci le note",
+};
+function describeStep(step) {
+  const op = step.op;
+  if (op === "set_field") return FIELD_LABELS[step.field] || `Imposta il campo ${step.field || ""}`.trim();
+  if (op === "click" || op === "select") {
+    const name = step.locator?.value || step.locator?.name;
+    return name ? `Clicca "${name}"` : "Clicca il pulsante";
+  }
+  return OP_LABELS[op] || step.desc || op;
+}
+function ProcedurePreview({ spec }) {
+  const steps = [...(spec?.steps || [])].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  if (steps.length === 0) return <p className="text-xs text-muted-foreground">Nessuna procedura registrata.</p>;
+  const loop = spec.line_loop;
+  const rows = [];
+  let loopOpen = false;
+  steps.forEach((s) => {
+    if (loop && s.seq === loop.start_seq) { loopOpen = true; rows.push({ type: "loop-start" }); }
+    rows.push({ type: "step", step: s, indent: loopOpen });
+    if (loop && s.seq === loop.end_seq) { loopOpen = false; rows.push({ type: "loop-end" }); }
+  });
+  return (
+    <ol data-testid="procedure-preview" className="mt-1 space-y-1.5">
+      {rows.map((r, i) => {
+        if (r.type === "loop-start")
+          return <li key={i} className="text-xs font-semibold text-ai flex items-center gap-1.5"><ArrowsClockwise size={13} /> Per ogni riga dell'ordine:</li>;
+        if (r.type === "loop-end") return <li key={i} className="text-xs text-muted-foreground pl-5">— fine ciclo righe —</li>;
+        return (
+          <li key={i} className={`flex items-start gap-2 text-xs text-foreground ${r.indent ? "pl-5" : ""}`}>
+            <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full bg-secondary text-[10px] font-bold flex items-center justify-center text-muted-foreground">{r.step.seq}</span>
+            <span>{describeStep(r.step)}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+const KIND_LABEL = { desktop_uia: "Desktop", web_dom: "Web", file_import: "File", api: "API" };
 
 function ReadinessPanel({ readiness }) {
   if (!readiness) return null;
@@ -171,6 +223,7 @@ export default function BridgeSetup() {
   const [readiness, setReadiness] = useState({});
   const [diary, setDiary] = useState({});
   const [summary, setSummary] = useState(null);
+  const [expanded, setExpanded] = useState({});
   const [proposed, setProposed] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -367,22 +420,44 @@ export default function BridgeSetup() {
         ) : (
           <div className="space-y-2">
             {adapters.map((a) => (
-              <div key={a.id} data-testid={`adapter-${a.id}`} className="flex items-center justify-between rounded-md border border-border bg-white px-4 py-3 text-sm">
-                <div>
-                  <b>{a.erp_guess || a.erp_key}</b>
-                  <span className="text-muted-foreground"> · v{a.version} · conf {Math.round((a.confidence || 0) * 100)}%
-                    {a.heal_count ? ` · auto-riparato ${a.heal_count}×` : ""}
-                    {a.test_order_ref ? ` · ordine di prova ${a.test_order_ref}` : ""}</span>
+              <div key={a.id} data-testid={`adapter-${a.id}`} className="rounded-md border border-border bg-white px-4 py-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <b>{a.erp_guess || a.erp_key}</b>
+                    <span data-testid={`adapter-kind-${a.id}`} className="text-[10px] font-semibold rounded-full bg-ai/10 px-2 py-0.5 text-ai">
+                      {KIND_LABEL[a.adapter_kind] || "Web"}
+                    </span>
+                    <span className="text-muted-foreground text-xs">v{a.version} · conf {Math.round((a.confidence || 0) * 100)}%
+                      {a.heal_count ? ` · auto-riparato ${a.heal_count}×` : ""}</span>
+                  </div>
+                  {a.status === "active" ? (
+                    <span data-testid={`adapter-status-${a.id}`} className="flex items-center gap-1 text-xs rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">
+                      <CheckCircle size={13} weight="fill" /> Attivo
+                    </span>
+                  ) : (
+                    <button data-testid={`adapter-confirm-${a.id}`} onClick={() => confirmAdapter(a.id)}
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+                      Conferma e attiva
+                    </button>
+                  )}
                 </div>
-                {a.status === "active" ? (
-                  <span data-testid={`adapter-status-${a.id}`} className="flex items-center gap-1 text-xs rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">
-                    <CheckCircle size={13} weight="fill" /> Attivo
-                  </span>
-                ) : (
-                  <button data-testid={`adapter-confirm-${a.id}`} onClick={() => confirmAdapter(a.id)}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
-                    Conferma ordine di prova
-                  </button>
+                {(a.spec?.steps?.length > 0) && (
+                  <div className="mt-2">
+                    <button data-testid={`adapter-preview-toggle-${a.id}`}
+                      onClick={() => setExpanded((p) => ({ ...p, [a.id]: !p[a.id] }))}
+                      className="flex items-center gap-1 text-xs font-medium text-ai hover:underline">
+                      {expanded[a.id] ? <CaretDown size={13} /> : <CaretRight size={13} />}
+                      Anteprima procedura appresa ({a.spec.steps.length} passi)
+                    </button>
+                    {expanded[a.id] && (
+                      <div className="mt-2 rounded-md bg-secondary p-3">
+                        {a.status !== "active" && (
+                          <p className="text-xs text-muted-foreground mb-2">Verifica cosa farà il Bridge, poi conferma per attivarlo.</p>
+                        )}
+                        <ProcedurePreview spec={a.spec} />
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

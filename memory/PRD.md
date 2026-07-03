@@ -182,6 +182,7 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 - **Nota**: la RPA desktop gira solo su Windows (dove sta il gestionale); fallback vision+OCR per app opache (Citrix/RDP/green-screen). Schema generico per qualsiasi ERP Windows.
 
 ### Demo workspace ripulito e re-seedato (credibilità commerciale)
+- **Anteprima procedura appresa (fiducia pre-attivazione)**: nel setup Bridge ogni adapter mostra un badge del tipo (Desktop/Web/File/API) e, per gli adapter con `spec.steps`, un toggle **"Anteprima procedura appresa (N passi)"** che rende leggibile la procedura ("Apri Nuovo ordine → Inserisci Cliente → Per ogni riga: Articolo, Quantità → Salva") con bottone **"Conferma e attiva"**. Il cliente vede *cosa* farà il Bridge prima di attivarlo. Verificato via screenshot su un adapter desktop_uia Danea di esempio (seedato in demo, pending_confirmation).
 - Rimossi 42 ordini di test QA + 3 prodotti junk (NEW-*/TEST_*) + adapter/agenti di test + 73 notifiche stale + 69 eventi diario stale.
 - **Re-seed a 12 ordini realistici** da grossista food (Trattoria Sole, Pizzeria Napoli 2000, Mensa San Giorgio, Osteria del Borgo, Gastronomia Bella Italia, Bar Sport Centrale, Hotel Belvedere, Ristorante Il Grano, ...), stati vari (ready/needs_review/validated/exported) e 5 canali (whatsapp/email/text/pdf/image). Catalogo pulito a 25 SKU. Regressione `test_iter13` = **13/13 PASS**.
 
