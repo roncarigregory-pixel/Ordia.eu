@@ -58,10 +58,10 @@ function ProcedurePreview({ spec }) {
     <ol data-testid="procedure-preview" className="mt-1 space-y-1.5">
       {rows.map((r, i) => {
         if (r.type === "loop-start")
-          return <li key={i} className="text-xs font-semibold text-ai flex items-center gap-1.5"><ArrowsClockwise size={13} /> Per ogni riga dell'ordine:</li>;
-        if (r.type === "loop-end") return <li key={i} className="text-xs text-muted-foreground pl-5">— fine ciclo righe —</li>;
+          return <li key="loop-start" className="text-xs font-semibold text-ai flex items-center gap-1.5"><ArrowsClockwise size={13} /> Per ogni riga dell'ordine:</li>;
+        if (r.type === "loop-end") return <li key="loop-end" className="text-xs text-muted-foreground pl-5">— fine ciclo righe —</li>;
         return (
-          <li key={i} className={`flex items-start gap-2 text-xs text-foreground ${r.indent ? "pl-5" : ""}`}>
+          <li key={`step-${r.step.seq}`} className={`flex items-start gap-2 text-xs text-foreground ${r.indent ? "pl-5" : ""}`}>
             <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full bg-secondary text-[10px] font-bold flex items-center justify-center text-muted-foreground">{r.step.seq}</span>
             <span>{describeStep(r.step)}</span>
           </li>
@@ -325,8 +325,8 @@ export default function BridgeSetup() {
               { v: summary.drafts_prepared, l: "bozze di prova corrette" },
               { v: summary.codes_in_catalog, l: "codici in anagrafica" },
               { v: summary.self_heals, l: "auto-riparazioni" },
-            ].map((k, i) => (
-              <div key={i} data-testid={`summary-metric-${i}`} className="rounded-md bg-secondary p-3 text-center">
+            ].map((k) => (
+              <div key={k.l} data-testid={`summary-metric-${k.l}`} className="rounded-md bg-secondary p-3 text-center">
                 <div className="font-display text-2xl font-black text-foreground">{k.v}</div>
                 <div className="text-xs text-muted-foreground">{k.l}</div>
               </div>
@@ -363,7 +363,7 @@ export default function BridgeSetup() {
                   <th className="py-2 pr-4">Colonna</th><th className="py-2">Campo Ordia</th></tr></thead>
                 <tbody className="divide-y divide-border">
                   {(proposed.columns || []).map((c, i) => (
-                    <tr key={i} data-testid={`bridge-col-${i}`}>
+                    <tr key={`${c.header || c.source}-${i}`} data-testid={`bridge-col-${i}`}>
                       <td className="py-2 pr-4 font-mono">{c.header || c.source}</td>
                       <td className="py-2">
                         <select className="rounded border border-input px-2 py-1 text-sm" defaultValue={c.source}
