@@ -2165,6 +2165,38 @@ ERP_CONNECTORS = {
                            "config_fields": ["base_url", "auth_header_name", "auth_token", "orders_endpoint", "catalog_endpoint", "customers_endpoint"]},
 }
 
+# Wizard: helper hints so a non-technical customer knows what each field is and what to
+# request from the ERP vendor. Reused across connectors, with per-connector guidance.
+FIELD_HINTS = {
+    "base_url": "L'indirizzo web della tua istanza ERP (es. https://tuaazienda.erp.it). Se è on-premise, l'indirizzo interno/VPN: chiedilo all'IT o all'installatore.",
+    "auth_token": "Token o API key generato nel gestionale (o fornito dal vendor). NON è la password di login.",
+    "auth_header_name": "Nome dell'header di autenticazione, di solito 'Authorization' o 'X-API-Key'. Se non lo sai, chiedi al vendor.",
+    "orders_endpoint": "Percorso API per creare ordini/documenti (es. /api/v1/orders). Lo trovi nella documentazione del vendor.",
+    "catalog_endpoint": "Percorso API per leggere gli articoli/SKU (per importare il catalogo).",
+    "customers_endpoint": "Percorso API per leggere l'anagrafica clienti.",
+    "database": "Nome del database/azienda nel gestionale.",
+    "company_db": "Nome del company database (per SAP Business One).",
+    "tenant_id": "ID del tenant (Microsoft/Azure).",
+    "environment": "Ambiente da usare (es. Production oppure Sandbox).",
+}
+DEFAULT_HELP = {
+    "intro": "Connettore REST: collega Ordia al gestionale tramite le sue API. Ti servono URL base, endpoint e un token di autenticazione.",
+    "ask_vendor": "Chiedi al fornitore del gestionale (o al tuo installatore): URL base dell'istanza, endpoint per creare ordini, tipo di autenticazione e token, ed eventuale ambiente di test.",
+    "no_api": "Non hai le API o non trovi questi dati? Usa il Bridge di Ordia (import file o apprendimento desktop): non richiede né URL né token.",
+}
+CONNECTOR_HELP = {
+    "florsistemi": {
+        "intro": "Etifood espone API web service (REST/SOAP). L'accesso di solito va abilitato da Flor Sistemi o dal tuo installatore: nel piano base le API potrebbero non essere attive.",
+        "ask_vendor": "Scrivi a Flor Sistemi (hello@florsistemi.it) o al tuo installatore chiedendo: 1) URL base dell'istanza, 2) endpoint per creare ordini/documenti, 3) tipo di autenticazione e come ottenere il token, 4) eventuale ambiente di test.",
+        "no_api": "Se Etifood non ha le API attive, non serve bloccarsi: usa il Bridge (import file o apprendimento desktop) — zero URL, zero token.",
+    },
+    "odoo": {"intro": "Odoo espone API REST/JSON-RPC. Genera una API key dal tuo profilo utente Odoo (Preferenze → Sicurezza account → Nuova API key)."},
+    "sap": {"intro": "SAP Business One via Service Layer. Servono URL del Service Layer, Company DB e credenziali. Di solito le fornisce il partner SAP."},
+    "business_central": {"intro": "Microsoft Business Central via API. Registra un'app in Azure AD per ottenere token OAuth, Tenant ID ed Environment."},
+    "zucchetti": {"intro": "Zucchetti via API: l'abilitazione e le credenziali API sono in genere fornite dal rivenditore Zucchetti."},
+    "teamsystem": {"intro": "TeamSystem via API: token e URL sono forniti dal portale TeamSystem o dal tuo rivenditore."},
+}
+
 def _apply_mappings(payload: dict, mappings: dict) -> dict:
     mappings = {**DEFAULT_MAPPINGS, **(mappings or {})}
     fm = mappings["field_map"]
@@ -2251,7 +2283,12 @@ class ErpConnectionBody(BaseModel):
 
 @api.get("/erp/connectors")
 async def list_connectors(user: dict = Depends(get_current_user)):
-    return [{"type": k, **v} for k, v in ERP_CONNECTORS.items()]
+    out = []
+    for k, v in ERP_CONNECTORS.items():
+        help_meta = {**DEFAULT_HELP, **CONNECTOR_HELP.get(k, {})}
+        field_hints = {f: FIELD_HINTS[f] for f in v.get("config_fields", []) if f in FIELD_HINTS}
+        out.append({"type": k, **v, "help": help_meta, "field_hints": field_hints})
+    return out
 
 @api.get("/erp/connections")
 async def list_connections(user: dict = Depends(get_current_user)):

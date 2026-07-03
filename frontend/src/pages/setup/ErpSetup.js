@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { SetupBack } from "./_shared";
 import {
-  Plug, Zap, Download, Trash2, Pencil, Plus, RefreshCw, CheckCircle2, XCircle, ArrowLeft, Boxes,
+  Plug, Zap, Download, Trash2, Pencil, Plus, RefreshCw, CheckCircle2, XCircle, ArrowLeft, Boxes, Info, Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,12 +47,14 @@ export default function ErpSetup() {
       connector_type: connectorType, name: meta?.name || connectorType,
       config: Object.fromEntries((meta?.config_fields || []).map((f) => [f, ""])),
       mappings: {}, active: connections.length === 0, _fields: meta?.config_fields || [],
+      _help: meta?.help || null, _hints: meta?.field_hints || {},
     });
   };
 
   const startEdit = (conn) => {
     const meta = connectors.find((c) => c.type === conn.connector_type);
-    setEditing({ ...conn, config: { ...conn.config }, _fields: meta?.config_fields || Object.keys(conn.config || {}) });
+    setEditing({ ...conn, config: { ...conn.config }, _fields: meta?.config_fields || Object.keys(conn.config || {}),
+      _help: meta?.help || null, _hints: meta?.field_hints || {} });
   };
 
   const save = async () => {
@@ -113,6 +115,27 @@ export default function ErpSetup() {
         <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mb-1">{editing.id ? "Modifica" : "Configura"} · {editing.name}</h1>
         <p className="text-sm text-muted-foreground mb-6">Ogni connettore è un modulo indipendente sopra il formato standard <code className="font-mono text-xs">ordia.order.v1</code>.</p>
 
+        {editing._help && (
+          <div data-testid="connector-wizard-help" className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <Info size={16} className="mt-0.5 shrink-0 text-primary" />
+              <p className="text-sm text-foreground">{editing._help.intro}</p>
+            </div>
+            {editing._help.ask_vendor && (
+              <div className="rounded-lg bg-white/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Cosa chiedere al fornitore</p>
+                <p className="text-sm text-foreground">{editing._help.ask_vendor}</p>
+              </div>
+            )}
+            {editing._help.no_api && (
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3">
+                <Lightbulb size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                <p className="text-sm text-amber-700">{editing._help.no_api}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="rounded-xl border border-border bg-white p-5 space-y-4">
           <div>
             <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Nome connessione</label>
@@ -129,6 +152,7 @@ export default function ErpSetup() {
                 placeholder={f === "auth_token" ? "••••••" : f.includes("endpoint") || f === "base_url" ? "https://…" : ""}
                 className="mt-1.5 w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
+              {editing._hints?.[f] && <p className="mt-1 text-xs text-muted-foreground">{editing._hints[f]}</p>}
             </div>
           ))}
           <label className="flex items-center gap-2 text-sm">
