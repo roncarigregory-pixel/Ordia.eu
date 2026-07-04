@@ -4,12 +4,13 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Sparkles, Package, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Sparkles, Package, ShoppingCart, RefreshCw } from "lucide-react";
 
 export default function CustomerDetail() {
   const { name } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [reordering, setReordering] = useState(false);
 
   const load = useCallback(() => {
     api.get(`/customers/${encodeURIComponent(name)}`)
@@ -18,6 +19,19 @@ export default function CustomerDetail() {
   }, [name, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleReorder = async () => {
+    setReordering(true);
+    try {
+      const { data } = await api.post(`/customers/${encodeURIComponent(name)}/reorder`);
+      toast.success(`Riordino creato con ${data.line_items} prodotti abituali. Rivedi e conferma.`);
+      navigate(`/app/orders/${data.id}`);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Impossibile creare il riordino.");
+    } finally {
+      setReordering(false);
+    }
+  };
 
   if (!data) {
     return (
@@ -39,16 +53,25 @@ export default function CustomerDetail() {
         <ArrowLeft size={16} /> Clienti
       </button>
 
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-primary-foreground">
           {customer.name.slice(0, 2).toUpperCase()}
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">{customer.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {customer.orders} ordini · €{(customer.volume || 0).toFixed(2)} di volume totale
           </p>
         </div>
+        <button
+          data-testid="reorder-button"
+          onClick={handleReorder}
+          disabled={reordering}
+          className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          <RefreshCw size={16} className={reordering ? "animate-spin" : ""} />
+          {reordering ? "Creazione…" : "Riordina prodotti abituali"}
+        </button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

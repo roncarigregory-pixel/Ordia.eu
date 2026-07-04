@@ -1078,6 +1078,57 @@ async def customer_detail(name: str, user: dict = Depends(get_current_user)):
     insights.append("Suggerimento: proponi un riordino dei prodotti abituali.")
     return {"customer": agg, "orders": mine, "insights": insights}
 
+@api.post("/customers/{name}/reorder")
+async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
+    """Create a new draft order pre-filled with the customer's habitual products,
+    inferred from their order history (ranked by frequency, most-recent quantity)."""
+    cid = user["company_id"]
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    mine = [o for o in orders if (o.get("customer_name") or "Sconosciuto") == name]
+    if not mine:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+
+    freq, last_qty, last_raw = {}, {}, {}
+    for o in mine:  # most-recent first
+        for i in o.get("line_items", []):
+            pid = i.get("matched_product_id")
+            if not pid:
+                continue
+            freq[pid] = freq.get(pid, 0) + 1
+            if pid not in last_qty:
+                last_qty[pid] = i.get("quantity", 1)
+                last_raw[pid] = i.get("raw_text") or i.get("matched_name")
+    if not freq:
+        raise HTTPException(status_code=400, detail="Nessun prodotto abituale nello storico di questo cliente.")
+
+    prods = {p["id"]: p for p in await db.products.find({"company_id": cid}, {"_id": 0}).to_list(2000)}
+    ranked = sorted(freq.items(), key=lambda x: -x[1])
+    line_items = []
+    for pid, _cnt in ranked:
+        p = prods.get(pid)
+        if not p:
+            continue
+        line_items.append({
+            "id": str(uuid.uuid4()), "raw_text": last_raw.get(pid), "quantity": float(last_qty.get(pid, 1)),
+            "unit": p.get("unit"), "matched_product_id": pid, "matched_sku": p.get("sku"),
+            "matched_name": p.get("name"), "price": p.get("price"), "confidence": 1.0, "needs_review": False,
+        })
+    if not line_items:
+        raise HTTPException(status_code=400, detail="I prodotti abituali non sono più presenti a catalogo.")
+
+    oid = str(uuid.uuid4())
+    ts = now_iso()
+    order = {
+        "id": oid, "company_id": cid, "created_by": user["id"],
+        "source_type": "reorder",
+        "source_preview": f"Riordino automatico per {name} — {len(line_items)} prodotti abituali dedotti dallo storico. Rivedi le quantità e conferma.",
+        "customer_name": name, "delivery_date": None, "notes": None,
+        "line_items": line_items, "status": "ready",
+        "created_at": ts, "updated_at": ts,
+    }
+    await db.orders.insert_one(order)
+    return {"id": oid, "line_items": len(line_items)}
+
 # ---------------------------------------------------------------------------
 # Roles, company settings & team management
 # ---------------------------------------------------------------------------

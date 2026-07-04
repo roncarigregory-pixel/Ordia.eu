@@ -192,8 +192,14 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 - **IMAP live**: servono host/email/app-password reali per testare la ricezione email.
 - **WhatsApp live**: servono credenziali Meta (app_secret, phone_number_id, verify_token); l'HMAC è già attivo.
 
+## ✅ Riordino con 1 click (2026-07-04)
+- **Backend** `POST /api/customers/{name}/reorder`: deduce i prodotti abituali dallo storico del cliente (ranking per frequenza, quantità dell'ULTIMO ordine per prodotto, prezzo/unità correnti dal catalogo), crea un nuovo ordine `status:"ready"`, `source_type:"reorder"`, righe a confidenza 1.0. 404 se cliente inesistente, 400 se nessun prodotto abituale.
+- **Frontend** `CustomerDetail.js`: pulsante "Riordina prodotti abituali" (data-testid `reorder-button`) → POST → toast → naviga a `/app/orders/{id}` per revisione/conferma.
+- **Verificato E2E** (curl + UI): storico 2 ordini → riordino = 4 righe (quantità dell'ultimo ordine) a 100%, totale €765.70. Dati di test ripuliti.
+- Prossimo naturale: import clienti + prodotti abituali da CSV/Excel per popolare lo storico anche senza ordini pregressi.
+
+
 ## 🔜 Prossimo — P2 (backlog)
-- **Buyer AI**: proposte di riordino per cliente, confronto fornitori.
 - **Connettori ERP**: SAP, Odoo, Business Central sopra l'export generico.
 - **Analytics avanzate + Forecast**: trend volumi, previsioni domanda.
 - **Workflow personalizzabili**: builder di regole avanzate (oltre auto-confirm/routing attuali).
