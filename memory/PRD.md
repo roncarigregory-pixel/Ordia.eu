@@ -257,3 +257,18 @@ Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123.
 - iteration_7.json: P1 (desktop 100%, mobile bug trovato)
 - iteration_8.json: P1 mobile nav fix verificato (5/5)
 - Suite backend: `/app/backend/tests/test_p0_lifecycle.py`
+
+
+## PRODUCTION RELEASE (2026-07-04) — de-demo + Bridge install
+Ordia passato da "demo/contest" a **Production Release** (cliente reale la prossima settimana).
+- **De-demo-ification (P0, fatto+testato):** rimosso l'auto-login demo (PILOT_MODE), rimossi TUTTI i riferimenti "Demo" client-facing (nav, badge sidebar, hint login). Landing → vero SaaS: CTA "Inizia gratis / Get started" → `/register`, "Accedi" → `/login`. i18n aggiornato (nav.demo, hero.cta, cta.button, hero.trust IT+EN). `AuthContext` ripulito (niente backdoor). `App.js` PublicOnly→/app, Protected→/login.
+- **Bridge install experience (P0, fatto+testato):** nuovo endpoint `GET /api/bridge/agent/download` (zip firmabile di `/app/bridge_agent`, auth-gated). UI in `BridgeSetup.js`: per agente non accoppiato → Passo 1 "Scarica Bridge (.zip)", Passo 2 comando docker precompilato con `ORDIA_BACKEND`+`ORDIA_PAIR_CODE` (copiabile), codice pairing, pill "in attesa" live. Tradotte le nuove stringhe EN.
+- **QA:** iteration_16.json — backend 11/11 pass (test_iter16_production.py), frontend ~95% P0 verificati. Fix applicati: stringa IT del pill Bridge tradotta. Nota: welcome-modal "blocca click background" = comportamento standard modale (ha pulsanti "Inizia subito"/X visibili), non un blocker reale.
+- **WhatsApp (deciso 2a):** flusso attuale = token manuale (Access Token+Phone Number ID+WABA ID) — reale ma NON one-click. Il vero one-click (Meta Embedded Signup/OAuth) richiede che Ordia diventi Meta Tech Provider/BSP + App Review Meta (settimane, lato Meta) → NON implementabile solo da codice. Implementato ma NON testato E2E (nessuna credenziale Meta reale).
+- **Bridge .exe firmato:** fuori scope (serve certificato code-signing del cliente).
+
+### Next (Production) — backlog prioritizzato
+- P1: Fase 3 — uniformità design/copy su TUTTE le schermate (tipografia/spaziature/stati loading/errori/notifiche) + QA import PDF/Excel/immagini/audio + export ERP end-to-end (non ancora testati singolarmente in questa pass).
+- P1: navigate('/login') esplicito in logout() (difensivo).
+- P2: WhatsApp Embedded Signup scaffolding (post approvazione Meta BSP).
+- P2: Stripe billing (trial→paid).

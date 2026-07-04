@@ -237,6 +237,17 @@ const EN = {
   "Esci dalla demo": "Exit demo",
   "Esci": "Log out",
 
+  // Bridge install experience (EN)
+  "Passo 1 · Scarica il Bridge": "Step 1 · Download the Bridge",
+  "Installalo su un dispositivo sempre acceso vicino al gestionale (mini-PC, NAS o il PC dell'ufficio ordini).": "Install it on an always-on device near your management software (mini-PC, NAS or the order desk PC).",
+  "Scarica Bridge (.zip)": "Download Bridge (.zip)",
+  "Passo 2 · Avvia con un comando": "Step 2 · Start with one command",
+  "Nella cartella scaricata, esegui (Docker). Il codice è già incluso — nessuna porta da aprire, nessun IT.": "In the downloaded folder, run (Docker). The code is already included — no ports to open, no IT needed.",
+  "Codice di accoppiamento": "Pairing code",
+  "In attesa del collegamento del Bridge… questa scheda si aggiorna da sola appena l'agente si connette.": "Waiting for the Bridge to connect… this card updates on its own as soon as the agent comes online.",
+  "Comando copiato": "Command copied",
+  "Download del Bridge avviato": "Bridge download started",
+
   // Dashboard (static)
   "Centro di Comando": "Command Center",
   "Da revisionare": "To review",
