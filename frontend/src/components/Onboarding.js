@@ -27,6 +27,9 @@ export const ORDIA_TUTORIAL_VIDEO = {
   poster: "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/a948ca6385b0a67de5e0c7210fd6dcf546b499f2df671ced7bbdf3cced50119f.png",
 };
 
+// Language-aware tutorial video source (native EN voiceover for English users)
+export const tutorialVideoSrc = (lang) => (lang === "en" ? "/ordia-tutorial-en-16x9.mp4" : "/ordia-tutorial-16x9.mp4");
+
 const WELCOME_KEY = "ordia.onboarding.welcome.v1";
 
 const HOW_IT_WORKS = [
@@ -59,8 +62,9 @@ export const useOnboarding = () => useContext(OnboardingContext);
 
 /* ---------------------------- Video player ---------------------------- */
 function VideoPlayer() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const v = ORDIA_TUTORIAL_VIDEO;
+  const src = tutorialVideoSrc(lang);
   if (v.type === "youtube" && v.src)
     return (
       <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
@@ -72,8 +76,8 @@ function VideoPlayer() {
     );
   if (v.type === "mp4" && v.src)
     return (
-      <video className="aspect-video w-full rounded-xl bg-black" controls poster={v.poster} data-testid="tutorial-video">
-        <source src={v.src} type="video/mp4" />
+      <video key={src} className="aspect-video w-full rounded-xl bg-black" controls poster={v.poster} data-testid="tutorial-video">
+        <source src={src} type="video/mp4" />
       </video>
     );
   // Placeholder until the final video is provided
