@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -12,10 +12,12 @@ export default function Customers() {
   const fileRef = useRef(null);
   const navigate = useNavigate();
 
-  const loadCustomers = () =>
-    api.get("/customers").then(({ data }) => setCustomers(data)).catch(() => setCustomers([]));
+  const loadCustomers = useCallback(
+    () => api.get("/customers").then(({ data }) => setCustomers(data)).catch(() => setCustomers([])),
+    []
+  );
 
-  useEffect(() => { loadCustomers(); }, []);
+  useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
   const downloadModel = () => {
     const csv = "cliente,prodotto,quantità\n" +

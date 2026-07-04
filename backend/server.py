@@ -788,7 +788,6 @@ def render_order_pdf(order: dict, order_id: str) -> bytes:
 
 @api.get("/orders/{order_id}/export")
 async def export_order(order_id: str, format: str = "json", user: dict = Depends(get_current_user)):
-    from xml.sax.saxutils import escape as _esc
     order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1233,7 +1232,6 @@ async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
                 last_raw[pid] = i.get("raw_text") or i.get("matched_name")
 
     # Fall back to the imported customer profile when there is no order history.
-    profile_only = False
     if not freq:
         profile = await db.customer_profiles.find_one({"company_id": cid, "name": name}, {"_id": 0})
         if profile:
@@ -1244,7 +1242,6 @@ async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
                 freq[pid] = len(profile["products"]) - idx  # preserve import order
                 last_qty[pid] = it.get("default_qty", 1)
                 last_raw[pid] = it.get("name")
-            profile_only = True
     if not freq:
         raise HTTPException(status_code=400, detail="Nessun prodotto abituale: importa i prodotti del cliente o crea prima un ordine.")
 

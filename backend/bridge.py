@@ -11,12 +11,11 @@ import json
 import secrets
 import base64
 import asyncio
-import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from fastapi import Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 
