@@ -2833,6 +2833,11 @@ weekly_summary_loop = _bridge["weekly_summary_loop"]
 
 
 app.include_router(api)
+
+@app.get("/health")
+async def app_health():
+    return {"status": "ok", "service": "ordia-api"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
@@ -2841,8 +2846,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup():
+async def _init_indexes():
     await db.users.create_index("email", unique=True)
     await db.products.create_index("company_id")
     await db.orders.create_index("company_id")
@@ -2858,7 +2862,26 @@ async def startup():
     await db.erp_master_data.create_index([("company_id", 1), ("erp_key", 1), ("kind", 1)])
     await db.delivery_jobs.create_index([("agent_id", 1), ("status", 1), ("next_attempt_at", 1)])
     await db.bridge_events.create_index([("company_id", 1), ("agent_id", 1), ("created_at", -1)])
-    await seed_demo_workspace()
+
+
+async def _deferred_init():
+    for attempt in range(30):
+        try:
+            await _init_indexes()
+            await seed_demo_workspace()
+            logger.info("Ordia DB init complete (indexes + demo seed).")
+            return
+        except Exception as e:
+            logger.warning(f"DB init attempt {attempt + 1} failed: {e}. Retrying in 5s...")
+            await asyncio.sleep(5)
+    logger.error("DB init did not complete after retries; API is up, will rely on lazy init.")
+
+
+@app.on_event("startup")
+async def startup():
+    # Never block/crash startup on DB availability; the app must become "ready"
+    # so the platform health check passes even if Mongo is briefly unreachable.
+    asyncio.create_task(_deferred_init())
     asyncio.create_task(email_poll_loop())
     asyncio.create_task(bridge_monitor_loop())
     asyncio.create_task(weekly_summary_loop())
