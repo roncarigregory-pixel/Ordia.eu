@@ -131,8 +131,8 @@ function GuidedTour({ step, total, onNext, onPrev, onClose }) {
         <p className="mt-1 text-sm text-muted-foreground">{cfg.body}</p>
         <div className="mt-4 flex items-center justify-between">
           <div className="flex gap-1">
-            {TOUR_STEPS.map((_, i) => (
-              <span key={i} className={`h-1.5 rounded-full transition-all ${i === step ? "w-5 bg-primary" : "w-1.5 bg-slate-200"}`} />
+            {TOUR_STEPS.map((s, i) => (
+              <span key={s.selector} className={`h-1.5 rounded-full transition-all ${i === step ? "w-5 bg-primary" : "w-1.5 bg-slate-200"}`} />
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -197,8 +197,8 @@ export function OnboardingProvider({ children }) {
             <DialogDescription className="text-base">Dagli ordini caotici agli ordini pronti — in automatico. Ecco come funziona:</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
-            {HOW_IT_WORKS.map((s, i) => (
-              <div key={i} className="rounded-xl border border-border bg-secondary/40 p-3">
+            {HOW_IT_WORKS.map((s) => (
+              <div key={s.title} className="rounded-xl border border-border bg-secondary/40 p-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><s.icon size={17} /></div>
                 <p className="mt-2 text-sm font-semibold text-foreground">{s.title}</p>
                 <p className="text-xs text-muted-foreground">{s.body}</p>
@@ -257,7 +257,7 @@ export function OnboardingProvider({ children }) {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Domande frequenti</p>
             <Accordion type="single" collapsible className="w-full">
               {FAQS.map((f, i) => (
-                <AccordionItem key={i} value={`faq-${i}`} data-testid={`faq-${i}`}>
+                <AccordionItem key={f.q} value={`faq-${i}`} data-testid={`faq-${i}`}>
                   <AccordionTrigger className="text-left text-sm">{f.q}</AccordionTrigger>
                   <AccordionContent className="text-sm text-muted-foreground">{f.a}</AccordionContent>
                 </AccordionItem>

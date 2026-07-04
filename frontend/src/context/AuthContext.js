@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
       setUser(data);
       setReady(true);
       return;
-    } catch {
-      // no valid session cookie
+    } catch (e) {
+      console.debug("auth/me: no valid session", e?.message);
     }
     // No valid session — in pilot mode auto-enter the demo workspace.
     if (PILOT_MODE) {
@@ -60,7 +60,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    try { await api.post("/auth/logout"); } catch (e) { console.debug("logout failed", e?.message); }
     setAuthToken(null);
     setUser(false);
   };

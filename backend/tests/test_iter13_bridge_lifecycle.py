@@ -28,8 +28,8 @@ from datetime import datetime, timezone, timedelta
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "demo@ordia.app"
-ADMIN_PASSWORD = "demo123"
+ADMIN_EMAIL = os.environ.get("DEMO_EMAIL", "demo@ordia.app")
+ADMIN_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo123")
 
 
 # ------------------------------------------------------------------ helpers --

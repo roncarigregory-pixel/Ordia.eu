@@ -20,8 +20,8 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 API = f"{BASE_URL}/api"
 
-DEMO_EMAIL = "demo@ordia.app"
-DEMO_PASSWORD = "demo123"
+DEMO_EMAIL = os.environ.get("DEMO_EMAIL", "demo@ordia.app")
+DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo123")
 HTTPBIN = "https://httpbin.org/post"
 
 
