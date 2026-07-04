@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ORDIA_TUTORIAL_VIDEO } from "@/components/Onboarding";
 import {
   Sparkles, Plus, ArrowUpRight, Inbox, Bell, Users, AlertTriangle,
   Lightbulb, GraduationCap, CircleCheck, Clock, Euro, Zap, TrendingUp,
@@ -236,6 +237,32 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* How it works — tutorial video */}
+      {ORDIA_TUTORIAL_VIDEO.src && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          data-testid="home-video-section"
+          className="mt-8 rounded-2xl border border-border bg-white p-6 sm:p-8"
+        >
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-ai-soft px-2.5 py-1 text-xs font-medium text-ai">
+            <Sparkles size={13} /> Come funziona
+          </span>
+          <h2 className="mt-3 font-display text-xl sm:text-2xl font-bold tracking-tight">Ordia in 90 secondi</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Dall'ordine ricevuto all'ordine pronto per il gestionale — in automatico.
+          </p>
+          <div className="mt-5 mx-auto max-w-3xl">
+            <video
+              data-testid="home-tutorial-video"
+              className="aspect-video w-full rounded-xl bg-black"
+              controls preload="metadata" poster={ORDIA_TUTORIAL_VIDEO.poster}
+            >
+              <source src={ORDIA_TUTORIAL_VIDEO.src} type="video/mp4" />
+            </video>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

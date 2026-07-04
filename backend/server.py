@@ -1810,6 +1810,9 @@ async def push_order_to_erp(order_id: str, user: dict = Depends(get_current_user
 # ---------------------------------------------------------------------------
 DEMO_EMAIL = os.environ.get("DEMO_EMAIL", "demo@ordia.app")
 DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo123")
+# When false (default), the workspace stays clean for real client trials:
+# the demo company/user/catalog are ensured, but NO demo orders are seeded.
+SEED_DEMO_ORDERS = os.environ.get("SEED_DEMO_ORDERS", "false").lower() == "true"
 
 DEMO_ORDERS = [
     {
@@ -2000,6 +2003,12 @@ async def seed_demo_workspace():
 
     if await db.products.count_documents({"company_id": company_id}) == 0:
         await seed_company_catalog(company_id)
+
+    if not SEED_DEMO_ORDERS:
+        # Keep the workspace clean for real client trials. Real client orders are
+        # never flagged demo_seed, so only the demo samples are removed.
+        await db.orders.delete_many({"company_id": company_id, "demo_seed": True})
+        return
 
     if await db.orders.count_documents({"company_id": company_id, "demo_seed": True}) > 0:
         return

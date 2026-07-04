@@ -204,7 +204,18 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 - Rate limiting webhook: in-memory per-process → Redis per multi-pod (futuro).
 
 ## Credenziali
-Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123 (pilot mode auto-login).
+Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123.
+
+## ✅ Video tutorial + Onboarding montato + Login attivo + Spazio pulito (2026-07-04)
+- **Video tutorial reale generato** via Playwright screen-recording + ffmpeg (didascalie IT incorporate durante la registrazione):
+  - `frontend/public/ordia-tutorial-16x9.mp4` (1280×720, 58s) — desktop/landing/YouTube.
+  - `frontend/public/ordia-tutorial-9x16.mp4` (720×1280) — **registrazione nativa mobile** per social (IG/TikTok/WhatsApp Status).
+  - Script: `/tmp/record_tutorial.py` (16:9) e `/tmp/record_tutorial_mobile.py` (9:16). URL pubblici: `{BASE}/ordia-tutorial-16x9.mp4` e `.../ordia-tutorial-9x16.mp4`.
+- **Onboarding COLLEGATO**: `components/Onboarding.js` esisteva ma non era mai montato. Ora `AppShell.js` avvolge il contenuto in `<OnboardingProvider>` → welcome modal (primo accesso), pulsante aiuto flottante, tour guidato spotlight (5 passi), modal video, FAQ. `ORDIA_TUTORIAL_VIDEO` ora `type:"mp4", src:"/ordia-tutorial-16x9.mp4"` (era placeholder).
+- **Video in Home**: sezione "Ordia in 90 secondi" in fondo a `Dashboard.js` (player 16:9 con poster), oltre al modal onboarding.
+- **Login ATTIVATO** (`REACT_APP_PILOT_MODE=false`): niente più auto-login demo; /app → /login. Auth JWT già pronta (Login/Register esistenti). La pagina login mostra l'hint credenziali demo.
+- **Spazio pulito per trial cliente**: rimossi 12 ordini demo + 27 learned_aliases. Catalogo (25 SKU) mantenuto. Nuovo gate `SEED_DEMO_ORDERS=false` (backend/.env): il seeder assicura azienda/utente/catalogo ma NON inserisce ordini demo e auto-pulisce i `demo_seed` a ogni avvio (gli ordini reali del cliente non hanno quel flag → salvi). Verificato: command-center = 0 ordini/clienti/notifiche.
+- ⚠️ **Le modifiche .env valgono solo in preview**: per la produzione (`emergent.host`) serve **RE-DEPLOY** perché login attivo + spazio pulito abbiano effetto. Al deploy il seeder auto-pulirà anche gli ordini demo del DB di produzione.
 
 ## Test reports
 - iteration_6.json: P0 lifecycle (18/18 backend + frontend happy path)
