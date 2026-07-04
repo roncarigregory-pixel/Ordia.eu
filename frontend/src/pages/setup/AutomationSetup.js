@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { SetupBack } from "./_shared";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +12,7 @@ export default function AutomationSetup() {
   const [cfg, setCfg] = useState(null);
   const [team, setTeam] = useState([]);
   const [saving, setSaving] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     api.get("/automations").then(({ data }) => setCfg(data)).catch(() => setCfg(false));
@@ -30,7 +32,7 @@ export default function AutomationSetup() {
         routing_user_id: cfg.routing_user_id,
       });
       setCfg(data);
-      toast.success("Automazioni salvate");
+      toast.success(t("Automazioni salvate"));
     } catch (err) {
       toast.error(formatApiError(err));
     } finally {
@@ -46,15 +48,15 @@ export default function AutomationSetup() {
           <Zap size={22} className="text-ai" />
         </span>
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Automazioni</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Lascia che Ordia confermi da sola gli ordini di cui è certa.</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">{t("Automazioni")}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t("Lascia che Ordia confermi da sola gli ordini di cui è certa.")}</p>
         </div>
       </div>
 
       {cfg === null ? (
         <Skeleton className="h-72 rounded-xl" />
       ) : !cfg ? (
-        <p className="text-sm text-muted-foreground">Impossibile caricare le automazioni.</p>
+        <p className="text-sm text-muted-foreground">{t("Impossibile caricare le automazioni.")}</p>
       ) : (
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-white p-5">
@@ -62,10 +64,9 @@ export default function AutomationSetup() {
               <div className="flex items-start gap-3">
                 <ShieldCheck size={20} className="mt-0.5 text-primary" />
                 <div>
-                  <p className="font-semibold">Conferma automatica</p>
+                  <p className="font-semibold">{t("Conferma automatica")}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
-                    Gli ordini con tutti gli articoli abbinati e ad alta confidenza vengono confermati
-                    senza revisione manuale.
+                    {t("Gli ordini con tutti gli articoli abbinati e ad alta confidenza vengono confermati senza revisione manuale.")}
                   </p>
                 </div>
               </div>
@@ -79,7 +80,7 @@ export default function AutomationSetup() {
             {cfg.auto_confirm_enabled && (
               <div className="mt-5 border-t border-border pt-5">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Soglia di confidenza minima</label>
+                  <label className="text-sm font-medium">{t("Soglia di confidenza minima")}</label>
                   <span data-testid="threshold-value" className="font-mono text-sm font-semibold text-ai">
                     {Math.round(cfg.confidence_threshold * 100)}%
                   </span>
@@ -92,7 +93,7 @@ export default function AutomationSetup() {
                   onValueChange={([v]) => set({ confidence_threshold: v / 100 })}
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Solo gli ordini in cui ogni articolo raggiunge questa confidenza saranno confermati automaticamente.
+                  {t("Solo gli ordini in cui ogni articolo raggiunge questa confidenza saranno confermati automaticamente.")}
                 </p>
               </div>
             )}
@@ -103,9 +104,9 @@ export default function AutomationSetup() {
               <div className="flex items-start gap-3">
                 <UserPlus size={20} className="mt-0.5 text-primary" />
                 <div>
-                  <p className="font-semibold">Trattieni i nuovi clienti</p>
+                  <p className="font-semibold">{t("Trattieni i nuovi clienti")}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
-                    Il primo ordine di un cliente mai visto prima passa sempre dalla revisione manuale.
+                    {t("Il primo ordine di un cliente mai visto prima passa sempre dalla revisione manuale.")}
                   </p>
                 </div>
               </div>
@@ -122,9 +123,9 @@ export default function AutomationSetup() {
               <div className="flex items-start gap-3">
                 <Route size={20} className="mt-0.5 text-primary" />
                 <div>
-                  <p className="font-semibold">Routing automatico</p>
+                  <p className="font-semibold">{t("Routing automatico")}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
-                    Assegna automaticamente gli ordini da revisionare a un membro del team.
+                    {t("Assegna automaticamente gli ordini da revisionare a un membro del team.")}
                   </p>
                 </div>
               </div>
@@ -136,14 +137,14 @@ export default function AutomationSetup() {
             </div>
             {cfg.routing_mode === "user" && (
               <div className="mt-5 border-t border-border pt-5">
-                <label className="text-sm font-medium">Assegna a</label>
+                <label className="text-sm font-medium">{t("Assegna a")}</label>
                 <select
                   data-testid="routing-user-select"
                   value={cfg.routing_user_id || ""}
                   onChange={(e) => set({ routing_user_id: e.target.value || null })}
                   className="mt-2 w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="">— Seleziona un membro —</option>
+                  <option value="">{t("— Seleziona un membro —")}</option>
                   {team.map((m) => (
                     <option key={m.id} value={m.id}>{m.name} · {m.role}</option>
                   ))}
@@ -159,7 +160,7 @@ export default function AutomationSetup() {
               disabled={saving}
               className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
-              {saving ? "Salvataggio…" : "Salva automazioni"}
+              {saving ? t("Salvataggio…") : t("Salva automazioni")}
             </button>
           </div>
         </div>

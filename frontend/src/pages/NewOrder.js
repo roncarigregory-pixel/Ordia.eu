@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import {
   Type, MessageCircle, Mail, FileText, FileSpreadsheet, Sheet,
@@ -46,6 +47,7 @@ const STAGES = [
 
 export default function NewOrder() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [channel, setChannel] = useState(CHANNELS[0]);
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
@@ -67,8 +69,8 @@ export default function NewOrder() {
 
   const submit = async () => {
     const isText = channel.mode === "text";
-    if (isText && !text.trim()) return toast.error("Scrivi o incolla prima un ordine.");
-    if (!isText && !file) return toast.error("Scegli prima un file.");
+    if (isText && !text.trim()) return toast.error(t("Scrivi o incolla prima un ordine."));
+    if (!isText && !file) return toast.error(t("Scegli prima un file."));
     setLoading(true);
     const timer = runStages();
     try {
@@ -82,7 +84,7 @@ export default function NewOrder() {
       clearInterval(timer);
       setStage(STAGES.length - 1);
       await new Promise((r) => setTimeout(r, 550));
-      toast.success("Ordine estratto");
+      toast.success(t("Ordine estratto"));
       navigate(`/app/orders/${data.id}`);
     } catch (err) {
       clearInterval(timer);
@@ -117,8 +119,8 @@ export default function NewOrder() {
             <Sparkles size={20} className="text-ai" />
           </span>
           <div>
-            <h1 className="font-display text-xl font-bold tracking-tight">Ordia sta leggendo l'ordine</h1>
-            <p className="text-sm text-muted-foreground">Estrazione intelligente in corso…</p>
+            <h1 className="font-display text-xl font-bold tracking-tight">{t("Ordia sta leggendo l'ordine")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Estrazione intelligente in corso…")}</p>
           </div>
         </motion.div>
         <div className="space-y-2.5">
@@ -142,7 +144,7 @@ export default function NewOrder() {
                     : active ? <Loader2 size={16} className="text-ai animate-spin" />
                       : <span className="h-2 w-2 rounded-full bg-slate-300" />}
                 </span>
-                <span className={cn("text-sm font-medium", done ? "text-emerald-700" : active ? "text-ai" : "text-muted-foreground")}>{s}</span>
+                <span className={cn("text-sm font-medium", done ? "text-emerald-700" : active ? "text-ai" : "text-muted-foreground")}>{t(s)}</span>
               </motion.div>
             );
           })}
@@ -153,9 +155,9 @@ export default function NewOrder() {
 
   return (
     <div className="max-w-3xl mx-auto animate-fade-up">
-      <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Nuovo Ordine</h1>
+      <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{t("Nuovo Ordine")}</h1>
       <p className="mt-2 text-sm text-muted-foreground mb-8">
-        Scegli un canale o trascina un file. Ordia estrae automaticamente cliente, articoli e quantità.
+        {t("Scegli un canale o trascina un file. Ordia estrae automaticamente cliente, articoli e quantità.")}
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -174,8 +176,8 @@ export default function NewOrder() {
             >
               <c.icon size={22} className={active ? "text-primary-foreground" : "text-primary"} />
               <div>
-                <p className="text-sm font-semibold">{c.label}</p>
-                <p className={cn("text-xs", active ? "text-primary-foreground/70" : "text-muted-foreground")}>{c.desc}</p>
+                <p className="text-sm font-semibold">{t(c.label)}</p>
+                <p className={cn("text-xs", active ? "text-primary-foreground/70" : "text-muted-foreground")}>{t(c.desc)}</p>
               </div>
             </button>
           );
@@ -190,7 +192,7 @@ export default function NewOrder() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={11}
-              placeholder={PLACEHOLDER[channel.id]}
+              placeholder={t(PLACEHOLDER[channel.id])}
               className="w-full rounded-xl border border-input bg-white p-4 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-none"
             />
             <button
@@ -198,7 +200,7 @@ export default function NewOrder() {
               onClick={() => setText(SAMPLE)}
               className="mt-2 text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
             >
-              Usa un ordine di esempio
+              {t("Usa un ordine di esempio")}
             </button>
           </motion.div>
         ) : (
@@ -216,8 +218,8 @@ export default function NewOrder() {
             )}
           >
             <UploadCloud size={40} className="mx-auto text-slate-400" />
-            <p className="mt-4 text-sm font-medium">{file ? file.name : `Trascina un file ${channel.label} o clicca per sfogliare`}</p>
-            <p className="mt-1 text-xs text-muted-foreground">PDF · Excel · CSV · Immagini · Vocali</p>
+            <p className="mt-4 text-sm font-medium">{file ? file.name : t("newOrder.dropzone", { ch: t(channel.label) })}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("PDF · Excel · CSV · Immagini · Vocali")}</p>
             <input
               ref={fileInput}
               type="file"
@@ -236,7 +238,7 @@ export default function NewOrder() {
         onClick={submit}
         className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-3.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
       >
-        <Sparkles size={18} /> Estrai ordine con l'AI
+        <Sparkles size={18} /> {t("Estrai ordine con l'AI")}
         <ArrowRight size={16} />
       </button>
     </div>

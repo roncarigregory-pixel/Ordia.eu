@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, ChevronRight, ChevronLeft } from "lucide-react";
@@ -23,6 +24,7 @@ export default function Orders() {
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   // Debounce the search input to avoid a request on every keystroke.
   useEffect(() => {
@@ -52,15 +54,15 @@ export default function Orders() {
     <div className="animate-fade-up">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Ordini</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Tutti gli ordini in arrivo, estratti e pronti da verificare.</p>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{t("Ordini")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("Tutti gli ordini in arrivo, estratti e pronti da verificare.")}</p>
         </div>
         <button
           data-testid="orders-new-order"
           onClick={() => navigate("/app/new")}
           className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
         >
-          <Plus size={18} /> Nuovo Ordine
+          <Plus size={18} /> {t("Nuovo Ordine")}
         </button>
       </div>
 
@@ -73,7 +75,7 @@ export default function Orders() {
               onClick={() => setFilter(f.key)}
               className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${filter === f.key ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
-              {f.label}
+              {t(f.label)}
             </button>
           ))}
         </div>
@@ -83,7 +85,7 @@ export default function Orders() {
             data-testid="orders-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Cerca cliente…"
+            placeholder={t("Cerca cliente…")}
             className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
@@ -95,15 +97,15 @@ export default function Orders() {
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-md" />)}
           </div>
         ) : items.length === 0 ? (
-          <div className="p-16 text-center text-sm text-muted-foreground">Nessun ordine trovato.</div>
+          <div className="p-16 text-center text-sm text-muted-foreground">{t("Nessun ordine trovato.")}</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Cliente</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden sm:table-cell">Articoli</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden md:table-cell">Sorgente</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Stato</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Cliente")}</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden sm:table-cell">{t("Articoli")}</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden md:table-cell">{t("Sorgente")}</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Stato")}</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -115,7 +117,7 @@ export default function Orders() {
                   onClick={() => navigate(`/app/orders/${o.id}`)}
                   className="cursor-pointer hover:bg-secondary/50 transition-colors"
                 >
-                  <td className="px-5 py-3 font-medium">{o.customer_name || "Cliente sconosciuto"}</td>
+                  <td className="px-5 py-3 font-medium">{o.customer_name || t("Cliente sconosciuto")}</td>
                   <td className="px-5 py-3 text-muted-foreground font-mono hidden sm:table-cell">{o.line_items.length}</td>
                   <td className="px-5 py-3 text-muted-foreground hidden md:table-cell capitalize">{o.source_type}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
@@ -129,7 +131,7 @@ export default function Orders() {
 
       {total > 0 && (
         <div data-testid="orders-pagination" className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span data-testid="orders-range">{from}–{to} di {total} ordini</span>
+          <span data-testid="orders-range">{t("orders.range", { from, to, total })}</span>
           <div className="flex items-center gap-2">
             <button
               data-testid="orders-prev-page"
@@ -137,16 +139,16 @@ export default function Orders() {
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 font-medium text-foreground transition-colors hover:bg-secondary/50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ChevronLeft size={15} /> Precedente
+              <ChevronLeft size={15} /> {t("Precedente")}
             </button>
-            <span data-testid="orders-page-indicator" className="tabular-nums">Pagina {page + 1} di {totalPages}</span>
+            <span data-testid="orders-page-indicator" className="tabular-nums">{t("orders.pageIndicator", { page: page + 1, pages: totalPages })}</span>
             <button
               data-testid="orders-next-page"
               disabled={page + 1 >= totalPages || loading}
               onClick={() => setPage((p) => p + 1)}
               className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 font-medium text-foreground transition-colors hover:bg-secondary/50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Successiva <ChevronRight size={15} />
+              {t("Successiva")} <ChevronRight size={15} />
             </button>
           </div>
         </div>

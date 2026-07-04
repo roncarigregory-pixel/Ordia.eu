@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ORDIA_TUTORIAL_VIDEO } from "@/components/Onboarding";
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [roi, setRoi] = useState(null);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   useEffect(() => {
     api.get("/command-center").then(({ data }) => setData(data)).catch(() => setData(false));
@@ -43,8 +45,13 @@ export default function Dashboard() {
 
   const { today, to_review, recent_activity, notifications, recent_customers, totals } = data;
   const summary = today.total === 0
-    ? "Nessun ordine ricevuto oggi. Incolla il primo e lascia lavorare Ordia."
-    : `Oggi ${today.total} ${today.total === 1 ? "ordine" : "ordini"} · ${today.auto} in automatico · ${today.review} da revisionare.`;
+    ? t("dash.summary.none")
+    : t("dash.summary.some", {
+        total: today.total,
+        word: today.total === 1 ? t("dash.order.singular") : t("dash.order.plural"),
+        auto: today.auto,
+        review: today.review,
+      });
 
   return (
     <div className="animate-fade-up">
@@ -56,13 +63,13 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-ai-soft px-2.5 py-1 text-xs font-medium text-ai">
-              <Sparkles size={13} /> Centro di Comando
+              <Sparkles size={13} /> {t("Centro di Comando")}
             </span>
             <h1 data-testid="command-summary" className="mt-3 font-display text-2xl sm:text-3xl font-bold tracking-tight leading-snug">
               {summary}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {totals.orders} ordini totali · {totals.customers} clienti nel tuo spazio di lavoro.
+              {t("dash.totals", { orders: totals.orders, customers: totals.customers })}
             </p>
           </div>
           <button
@@ -70,7 +77,7 @@ export default function Dashboard() {
             onClick={() => navigate("/app/new")}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            <Plus size={18} /> Nuovo Ordine
+            <Plus size={18} /> {t("Nuovo Ordine")}
           </button>
         </div>
       </motion.div>
@@ -84,17 +91,17 @@ export default function Dashboard() {
         >
           {[
             { key: "hours", icon: Clock, tint: "bg-ai-soft text-ai",
-              label: "Ore risparmiate", value: `${(roi.hours_saved || 0).toLocaleString("it-IT")} h`,
-              sub: `${(roi.lines_processed || 0).toLocaleString("it-IT")} righe elaborate` },
+              label: t("Ore risparmiate"), value: `${(roi.hours_saved || 0).toLocaleString("it-IT")} h`,
+              sub: t("dash.roi.hours.sub", { lines: (roi.lines_processed || 0).toLocaleString("it-IT") }) },
             { key: "money", icon: Euro, tint: "bg-emerald-50 text-emerald-600",
-              label: "Risparmio stimato", value: `€${(roi.money_saved || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
-              sub: `a €${roi.hourly_rate}/h di data entry` },
+              label: t("Risparmio stimato"), value: `€${(roi.money_saved || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
+              sub: t("dash.roi.money.sub", { rate: roi.hourly_rate }) },
             { key: "automation", icon: Zap, tint: "bg-amber-50 text-amber-600",
-              label: "Tasso di automazione", value: `${roi.automation_rate || 0}%`,
-              sub: `${(roi.auto_confirmed || 0).toLocaleString("it-IT")} confermati in automatico` },
+              label: t("Tasso di automazione"), value: `${roi.automation_rate || 0}%`,
+              sub: t("dash.roi.automation.sub", { n: (roi.auto_confirmed || 0).toLocaleString("it-IT") }) },
             { key: "volume", icon: TrendingUp, tint: "bg-indigo-50 text-indigo-600",
-              label: "Volume processato", value: `€${(roi.volume_processed || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
-              sub: `${(roi.orders_this_month || 0).toLocaleString("it-IT")} ordini questo mese` },
+              label: t("Volume processato"), value: `€${(roi.volume_processed || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`,
+              sub: t("dash.roi.volume.sub", { n: (roi.orders_this_month || 0).toLocaleString("it-IT") }) },
           ].map((m) => (
             <div
               key={m.key}
@@ -120,16 +127,16 @@ export default function Dashboard() {
           {/* To review */}
           <div className="rounded-xl border border-border bg-white">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <h2 className="font-display text-lg font-bold tracking-tight">Da revisionare</h2>
+              <h2 className="font-display text-lg font-bold tracking-tight">{t("Da revisionare")}</h2>
               <button data-testid="view-all-orders" onClick={() => navigate("/app/orders")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-                Tutti gli ordini <ArrowUpRight size={14} />
+                {t("Tutti gli ordini")} <ArrowUpRight size={14} />
               </button>
             </div>
             {to_review.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
                 <CircleCheck size={28} className="text-emerald-500" />
-                <p className="font-medium">Tutto in ordine</p>
-                <p className="text-sm text-muted-foreground">Nessun ordine attende la tua conferma.</p>
+                <p className="font-medium">{t("Tutto in ordine")}</p>
+                <p className="text-sm text-muted-foreground">{t("Nessun ordine attende la tua conferma.")}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -141,8 +148,8 @@ export default function Dashboard() {
                     className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-secondary/50"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{o.customer_name || "Cliente sconosciuto"}</p>
-                      <p className="truncate font-mono text-xs text-muted-foreground">{o.line_items.length} articoli · {o.source_type}</p>
+                      <p className="truncate text-sm font-medium">{o.customer_name || t("Cliente sconosciuto")}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{o.line_items.length} {t("articoli")} · {o.source_type}</p>
                     </div>
                     <StatusBadge status={o.status} />
                   </button>
@@ -154,10 +161,10 @@ export default function Dashboard() {
           {/* Recent activity */}
           <div className="rounded-xl border border-border bg-white">
             <div className="border-b border-border px-5 py-4">
-              <h2 className="font-display text-lg font-bold tracking-tight">Attività recente</h2>
+              <h2 className="font-display text-lg font-bold tracking-tight">{t("Attività recente")}</h2>
             </div>
             {recent_activity.length === 0 ? (
-              <p className="px-5 py-10 text-center text-sm text-muted-foreground">Ancora nessun ordine.</p>
+              <p className="px-5 py-10 text-center text-sm text-muted-foreground">{t("Ancora nessun ordine.")}</p>
             ) : (
               <div className="divide-y divide-border">
                 {recent_activity.map((o) => (
@@ -168,7 +175,7 @@ export default function Dashboard() {
                     className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-secondary/50"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{o.customer_name || "Cliente sconosciuto"}</p>
+                      <p className="truncate text-sm font-medium">{o.customer_name || t("Cliente sconosciuto")}</p>
                       <p className="truncate font-mono text-xs text-muted-foreground">
                         {new Date(o.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </p>
@@ -187,10 +194,10 @@ export default function Dashboard() {
           <div className="rounded-xl border border-border bg-white">
             <div className="flex items-center gap-2 border-b border-border px-5 py-4">
               <Bell size={16} className="text-ai" />
-              <h2 className="font-display text-lg font-bold tracking-tight">Notifiche AI</h2>
+              <h2 className="font-display text-lg font-bold tracking-tight">{t("Notifiche AI")}</h2>
             </div>
             {notifications.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">Nessuna notifica.</p>
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("Nessuna notifica.")}</p>
             ) : (
               <div className="space-y-2 p-4">
                 {notifications.map((n, i) => {
@@ -212,10 +219,10 @@ export default function Dashboard() {
           <div className="rounded-xl border border-border bg-white">
             <div className="flex items-center gap-2 border-b border-border px-5 py-4">
               <Users size={16} className="text-slate-400" />
-              <h2 className="font-display text-lg font-bold tracking-tight">Clienti recenti</h2>
+              <h2 className="font-display text-lg font-bold tracking-tight">{t("Clienti recenti")}</h2>
             </div>
             {recent_customers.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">Nessun cliente ancora.</p>
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("Nessun cliente ancora.")}</p>
             ) : (
               <div className="divide-y divide-border">
                 {recent_customers.map((c) => (
@@ -227,7 +234,7 @@ export default function Dashboard() {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{c.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{c.orders} ordini · €{(c.volume || 0).toFixed(0)}</p>
+                      <p className="truncate text-xs text-muted-foreground">{c.orders} {t("ordini")} · €{(c.volume || 0).toFixed(0)}</p>
                     </div>
                     <ArrowUpRight size={14} className="text-slate-300" />
                   </button>
@@ -246,11 +253,11 @@ export default function Dashboard() {
           className="mt-8 rounded-2xl border border-border bg-white p-6 sm:p-8"
         >
           <span className="inline-flex items-center gap-1.5 rounded-full bg-ai-soft px-2.5 py-1 text-xs font-medium text-ai">
-            <Sparkles size={13} /> Come funziona
+            <Sparkles size={13} /> {t("Come funziona")}
           </span>
-          <h2 className="mt-3 font-display text-xl sm:text-2xl font-bold tracking-tight">Ordia in 90 secondi</h2>
+          <h2 className="mt-3 font-display text-xl sm:text-2xl font-bold tracking-tight">{t("Ordia in 90 secondi")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Dall'ordine ricevuto all'ordine pronto per il gestionale — in automatico.
+            {t("Dall'ordine ricevuto all'ordine pronto per il gestionale — in automatico.")}
           </p>
           <div className="mt-5 mx-auto max-w-3xl">
             <video

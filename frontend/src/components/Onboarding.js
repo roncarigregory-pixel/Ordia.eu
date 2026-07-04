@@ -13,6 +13,7 @@ import {
   Play, HelpCircle, X, ArrowRight, ArrowLeft, Sparkles, MessageSquare,
   ScanText, CheckCircle2, Send, BookOpen, Compass, Film,
 } from "lucide-react";
+import { useI18n } from "@/context/I18nContext";
 
 /* ------------------------------------------------------------------ *
  * OFFICIAL TUTORIAL VIDEO — swap this single object to go live.
@@ -46,6 +47,7 @@ const TOUR_STEPS = [
 const FAQS = [
   { q: "Come arrivano gli ordini in Ordia?", a: "Automaticamente dai canali collegati (WhatsApp, email), oppure incollandoli o caricandoli con il pulsante \"Nuovo Ordine\"." },
   { q: "Devo controllare ogni ordine riga per riga?", a: "No. Ordia evidenzia solo le righe \"incerte\". Il resto è già compilato e verificato: ti basta un'occhiata e Approva." },
+  { q: "Ordia sostituisce il mio gestionale?", a: "No. Ordia non è un ERP e non sostituisce il tuo gestionale. È il livello AI che automatizza gli ordini prima che arrivino al software che usi già." },
   { q: "Funziona con il mio gestionale?", a: "Sì. Tramite API, file o il Bridge di Ordia — che inserisce gli ordini anche in gestionali senza API." },
   { q: "I miei dati sono al sicuro?", a: "Sì. Sei tu a confermare prima dell'invio: nessun inserimento automatico cieco. Le credenziali del gestionale restano tue." },
   { q: "Come inserisco un ordine manualmente?", a: "Con il pulsante \"Nuovo Ordine\" in alto a sinistra: incolli il testo o carichi un file e l'AI fa il resto." },
@@ -56,6 +58,7 @@ export const useOnboarding = () => useContext(OnboardingContext);
 
 /* ---------------------------- Video player ---------------------------- */
 function VideoPlayer() {
+  const { t } = useI18n();
   const v = ORDIA_TUTORIAL_VIDEO;
   if (v.type === "youtube" && v.src)
     return (
@@ -82,7 +85,7 @@ function VideoPlayer() {
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 shadow-lg">
           <Play size={26} className="ml-1 text-primary" fill="currentColor" />
         </div>
-        <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white">Video tutorial in arrivo · 90s</span>
+        <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white">{t("Video tutorial in arrivo · 90s")}</span>
       </div>
     </div>
   );
@@ -125,10 +128,10 @@ function GuidedTour({ step, total, onNext, onPrev, onClose }) {
       <div className="absolute w-[320px] rounded-2xl border border-border bg-white p-5 shadow-2xl transition-all duration-200"
         style={tipStyle} data-testid="tour-tooltip">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-          <Sparkles size={13} /> Passo {step + 1} di {total}
+          <Sparkles size={13} /> {t("tour.step", { n: step + 1, total })}
         </div>
-        <h3 className="mt-2 font-display text-lg font-bold tracking-tight text-foreground">{cfg.title}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{cfg.body}</p>
+        <h3 className="mt-2 font-display text-lg font-bold tracking-tight text-foreground">{t(cfg.title)}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t(cfg.body)}</p>
         <div className="mt-4 flex items-center justify-between">
           <div className="flex gap-1">
             {TOUR_STEPS.map((s, i) => (
@@ -143,7 +146,7 @@ function GuidedTour({ step, total, onNext, onPrev, onClose }) {
             )}
             <button data-testid="tour-next" onClick={onNext}
               className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-              {step === total - 1 ? "Fine" : "Avanti"} <ArrowRight size={15} />
+              {step === total - 1 ? t("Fine") : t("Avanti")} <ArrowRight size={15} />
             </button>
           </div>
         </div>
@@ -158,6 +161,7 @@ function GuidedTour({ step, total, onNext, onPrev, onClose }) {
 
 /* ---------------------------- Provider ---------------------------- */
 export function OnboardingProvider({ children }) {
+  const { t } = useI18n();
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -184,7 +188,7 @@ export function OnboardingProvider({ children }) {
       {children}
 
       {/* Floating help launcher — always available */}
-      <button data-testid="onboarding-help-btn" onClick={openHelp} title="Guida & tour"
+      <button data-testid="onboarding-help-btn" onClick={openHelp} title={t("Guida & tour")}
         className="fixed bottom-20 md:bottom-6 right-5 z-[70] flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105">
         <HelpCircle size={22} />
       </button>
@@ -193,31 +197,31 @@ export function OnboardingProvider({ children }) {
       <Dialog open={welcomeOpen} onOpenChange={(o) => { if (!o) closeWelcome(); }}>
         <DialogContent className="max-w-lg" data-testid="onboarding-welcome">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl tracking-tight">Benvenuto in Ordia 👋</DialogTitle>
-            <DialogDescription className="text-base">Dagli ordini caotici agli ordini pronti — in automatico. Ecco come funziona:</DialogDescription>
+            <DialogTitle className="font-display text-2xl tracking-tight">{t("Benvenuto in Ordia 👋")}</DialogTitle>
+            <DialogDescription className="text-base">{t("Dagli ordini caotici agli ordini pronti — in automatico. Ordia lavora con il tuo gestionale, non lo sostituisce. Ecco come funziona:")}</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             {HOW_IT_WORKS.map((s) => (
               <div key={s.title} className="rounded-xl border border-border bg-secondary/40 p-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><s.icon size={17} /></div>
-                <p className="mt-2 text-sm font-semibold text-foreground">{s.title}</p>
-                <p className="text-xs text-muted-foreground">{s.body}</p>
+                <p className="mt-2 text-sm font-semibold text-foreground">{t(s.title)}</p>
+                <p className="text-xs text-muted-foreground">{t(s.body)}</p>
               </div>
             ))}
           </div>
           <div className="flex flex-col gap-2">
             <button data-testid="welcome-watch-video" onClick={openVideo}
               className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-              <Play size={16} fill="currentColor" /> Guarda il video (90s)
+              <Play size={16} fill="currentColor" /> {t("Guarda il video (90s)")}
             </button>
             <div className="flex gap-2">
               <button data-testid="welcome-start-tour" onClick={startTour}
                 className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold hover:bg-secondary">
-                <Compass size={16} /> Fai il tour guidato
+                <Compass size={16} /> {t("Fai il tour guidato")}
               </button>
               <button data-testid="welcome-skip" onClick={closeWelcome}
                 className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary">
-                Inizia subito
+                {t("Inizia subito")}
               </button>
             </div>
           </div>
@@ -228,8 +232,8 @@ export function OnboardingProvider({ children }) {
       <Dialog open={videoOpen} onOpenChange={setVideoOpen}>
         <DialogContent className="max-w-2xl" data-testid="onboarding-video-modal">
           <DialogHeader>
-            <DialogTitle className="font-display text-xl tracking-tight flex items-center gap-2"><Film size={18} /> Come funziona Ordia</DialogTitle>
-            <DialogDescription>Il flusso completo in 90 secondi: dall'ordine ricevuto all'ordine nel gestionale.</DialogDescription>
+            <DialogTitle className="font-display text-xl tracking-tight flex items-center gap-2"><Film size={18} /> {t("Come funziona Ordia")}</DialogTitle>
+            <DialogDescription>{t("Il flusso completo in 90 secondi: dall'ordine ricevuto all'ordine nel gestionale.")}</DialogDescription>
           </DialogHeader>
           <VideoPlayer />
         </DialogContent>
@@ -239,27 +243,27 @@ export function OnboardingProvider({ children }) {
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto" data-testid="onboarding-help-panel">
           <SheetHeader>
-            <SheetTitle className="font-display text-xl tracking-tight flex items-center gap-2"><BookOpen size={18} /> Guida</SheetTitle>
+            <SheetTitle className="font-display text-xl tracking-tight flex items-center gap-2"><BookOpen size={18} /> {t("Guida")}</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-2">
             <button data-testid="help-watch-video" onClick={() => { setHelpOpen(false); openVideo(); }}
               className="flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/40 p-3 text-left hover:bg-secondary">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Play size={16} fill="currentColor" /></div>
-              <div><p className="text-sm font-semibold">Guarda il video tutorial</p><p className="text-xs text-muted-foreground">Il flusso completo in 90 secondi</p></div>
+              <div><p className="text-sm font-semibold">{t("Guarda il video tutorial")}</p><p className="text-xs text-muted-foreground">{t("Il flusso completo in 90 secondi")}</p></div>
             </button>
             <button data-testid="help-replay-tour" onClick={startTour}
               className="flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/40 p-3 text-left hover:bg-secondary">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Compass size={16} /></div>
-              <div><p className="text-sm font-semibold">Rivedi il tour guidato</p><p className="text-xs text-muted-foreground">Un giro veloce dell'interfaccia</p></div>
+              <div><p className="text-sm font-semibold">{t("Rivedi il tour guidato")}</p><p className="text-xs text-muted-foreground">{t("Un giro veloce dell'interfaccia")}</p></div>
             </button>
           </div>
           <div className="mt-6">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Domande frequenti</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Domande frequenti")}</p>
             <Accordion type="single" collapsible className="w-full">
               {FAQS.map((f, i) => (
                 <AccordionItem key={f.q} value={`faq-${i}`} data-testid={`faq-${i}`}>
-                  <AccordionTrigger className="text-left text-sm">{f.q}</AccordionTrigger>
-                  <AccordionContent className="text-sm text-muted-foreground">{f.a}</AccordionContent>
+                  <AccordionTrigger className="text-left text-sm">{t(f.q)}</AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">{t(f.a)}</AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>

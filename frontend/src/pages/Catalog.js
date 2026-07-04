@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,7 +29,7 @@ export default function Catalog() {
   };
 
   const save = async () => {
-    if (!form.name.trim()) return toast.error("Il nome è obbligatorio.");
+    if (!form.name.trim()) return toast.error(t("Il nome è obbligatorio."));
     const payload = {
       ...form,
       price: parseFloat(form.price) || 0,
@@ -37,7 +38,7 @@ export default function Catalog() {
     try {
       if (editing) await api.put(`/products/${editing.id}`, payload);
       else await api.post("/products", payload);
-      toast.success(editing ? "Prodotto aggiornato" : "Prodotto aggiunto");
+      toast.success(editing ? t("Prodotto aggiornato") : t("Prodotto aggiunto"));
       setOpen(false);
       load();
     } catch (err) {
@@ -47,7 +48,7 @@ export default function Catalog() {
 
   const remove = async (p) => {
     await api.delete(`/products/${p.id}`);
-    toast.success("Prodotto eliminato");
+    toast.success(t("Prodotto eliminato"));
     load();
   };
 
@@ -58,7 +59,7 @@ export default function Catalog() {
     fd.append("file", f);
     try {
       const { data } = await api.post("/products/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`${data.inserted} prodotti importati`);
+      toast.success(t("catalog.imported", { n: data.inserted }));
       load();
     } catch (err) {
       toast.error(formatApiError(err));
@@ -77,25 +78,25 @@ export default function Catalog() {
     <div className="animate-fade-up">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Catalogo</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{t("Catalogo")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Prodotti, alias e formati che l'AI usa per abbinare gli ordini. Modificabile e sostituibile.
+            {t("Prodotti, alias e formati che l'AI usa per abbinare gli ordini. Modificabile e sostituibile.")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInput} type="file" accept=".csv,.xlsx,.xls" className="hidden" data-testid="catalog-import-input" onChange={onImport} />
           <button data-testid="catalog-import-button" onClick={() => fileInput.current?.click()} className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
-            <Upload size={16} /> Importa CSV/Excel
+            <Upload size={16} /> {t("Importa CSV/Excel")}
           </button>
           <button data-testid="catalog-add-button" onClick={openNew} className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors">
-            <Plus size={18} /> Aggiungi prodotto
+            <Plus size={18} /> {t("Aggiungi prodotto")}
           </button>
         </div>
       </div>
 
       <div className="relative max-w-xs mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input data-testid="catalog-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca per nome o SKU…" className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <input data-testid="catalog-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cerca per nome o SKU…")} className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
       </div>
 
       <div className="rounded-xl border border-border bg-white overflow-hidden">
@@ -104,17 +105,17 @@ export default function Catalog() {
         ) : filtered.length === 0 ? (
           <div className="p-16 text-center">
             <Package size={36} className="mx-auto text-slate-300" />
-            <p className="mt-3 text-sm text-muted-foreground">Nessun prodotto. Aggiungine uno o importa il tuo catalogo.</p>
+            <p className="mt-3 text-sm text-muted-foreground">{t("Nessun prodotto. Aggiungine uno o importa il tuo catalogo.")}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">
                 <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">SKU</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Prodotto</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden md:table-cell">Formato</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Prodotto")}</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden md:table-cell">{t("Formato")}</th>
                 <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden lg:table-cell">Alias</th>
-                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground text-right">Prezzo</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground text-right">{t("Prezzo")}</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -145,20 +146,20 @@ export default function Catalog() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display tracking-tight">{editing ? "Modifica prodotto" : "Nuovo prodotto"}</DialogTitle>
+            <DialogTitle className="font-display tracking-tight">{editing ? t("Modifica prodotto") : t("Nuovo prodotto")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <Field label="SKU" testid="product-sku"><input value={form.sku} onChange={setF("sku")} className="input" /></Field>
-              <Field label="Categoria" testid="product-category"><input value={form.category} onChange={setF("category")} className="input" /></Field>
+              <Field label={t("Categoria")} testid="product-category"><input value={form.category} onChange={setF("category")} className="input" /></Field>
             </div>
-            <Field label="Nome" testid="product-name"><input value={form.name} onChange={setF("name")} className="input" /></Field>
+            <Field label={t("Nome")} testid="product-name"><input value={form.name} onChange={setF("name")} className="input" /></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Unità" testid="product-unit"><input value={form.unit} onChange={setF("unit")} className="input" /></Field>
-              <Field label="Prezzo (€)" testid="product-price"><input type="number" step="0.01" value={form.price} onChange={setF("price")} className="input" /></Field>
+              <Field label={t("Unità")} testid="product-unit"><input value={form.unit} onChange={setF("unit")} className="input" /></Field>
+              <Field label={t("Prezzo (€)")} testid="product-price"><input type="number" step="0.01" value={form.price} onChange={setF("price")} className="input" /></Field>
             </div>
-            <Field label="Formato confezione" testid="product-pack"><input value={form.pack_size} onChange={setF("pack_size")} placeholder="es. 1 cassa = 12 kg" className="input" /></Field>
-            <Field label="Alias (separati da virgola)" testid="product-aliases">
+            <Field label={t("Formato confezione")} testid="product-pack"><input value={form.pack_size} onChange={setF("pack_size")} placeholder="es. 1 cassa = 12 kg" className="input" /></Field>
+            <Field label={t("Alias (separati da virgola)")} testid="product-aliases">
               <input
                 value={Array.isArray(form.aliases) ? form.aliases.join(", ") : form.aliases}
                 onChange={(e) => setForm({ ...form, aliases: e.target.value.split(",").map((a) => a.trim()) })}
@@ -168,8 +169,8 @@ export default function Catalog() {
             </Field>
           </div>
           <DialogFooter>
-            <button onClick={() => setOpen(false)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">Annulla</button>
-            <button data-testid="save-product-button" onClick={save} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90">Salva</button>
+            <button onClick={() => setOpen(false)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">{t("Annulla")}</button>
+            <button data-testid="save-product-button" onClick={save} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90">{t("Salva")}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

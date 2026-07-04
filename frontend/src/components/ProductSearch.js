@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Search, Check, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/context/I18nContext";
 
 export function ProductSearch({ products, value, onSelect, onCreate, invalid, testid }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef(null);
@@ -39,7 +41,7 @@ export function ProductSearch({ products, value, onSelect, onCreate, invalid, te
         )}
       >
         <span className={cn("flex-1 truncate", selected ? "text-foreground" : "text-amber-700")}>
-          {selected ? selected.name : "— Cerca prodotto —"}
+          {selected ? selected.name : t("— Cerca prodotto —")}
         </span>
         {selected && <span className="shrink-0 font-mono text-xs text-muted-foreground">{selected.sku}</span>}
       </button>
@@ -53,7 +55,7 @@ export function ProductSearch({ products, value, onSelect, onCreate, invalid, te
               data-testid={`${testid}-input`}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Cerca per nome o SKU…"
+              placeholder={t("Cerca per nome o SKU…")}
               className="w-full bg-transparent text-sm outline-none"
             />
           </div>
@@ -63,10 +65,10 @@ export function ProductSearch({ products, value, onSelect, onCreate, invalid, te
                 onClick={() => { onSelect(null); setOpen(false); }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50"
               >
-                <X size={14} /> Rimuovi abbinamento
+                <X size={14} /> {t("Rimuovi abbinamento")}
               </button>
             )}
-            {results.length === 0 && <p className="px-3 py-4 text-center text-sm text-muted-foreground">Nessun prodotto.</p>}
+            {results.length === 0 && <p className="px-3 py-4 text-center text-sm text-muted-foreground">{t("Nessun prodotto.")}</p>}
             {results.map((p) => (
               <button
                 key={p.id}
@@ -87,7 +89,7 @@ export function ProductSearch({ products, value, onSelect, onCreate, invalid, te
                 onClick={() => { onCreate(q.trim()); setOpen(false); }}
                 className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-border px-3 py-2.5 text-left text-ai hover:bg-ai-soft"
               >
-                <Plus size={15} /> <span className="text-sm font-medium">Crea nuovo prodotto «{q.trim()}»</span>
+                <Plus size={15} /> <span className="text-sm font-medium">{t("product.createNew", { q: q.trim() })}</span>
               </button>
             )}
           </div>

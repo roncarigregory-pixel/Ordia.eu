@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { SetupBack } from "./_shared";
 import {
@@ -32,6 +33,7 @@ export default function ErpSetup() {
   const [jobs, setJobs] = useState([]);
   const [editing, setEditing] = useState(null); // connection draft or null
   const [busy, setBusy] = useState(false);
+  const { t } = useI18n();
 
   const load = useCallback(async () => {
     const [c, conns, j] = await Promise.all([
@@ -63,30 +65,30 @@ export default function ErpSetup() {
       const payload = { connector_type: editing.connector_type, name: editing.name, config: editing.config, mappings: editing.mappings || {}, active: editing.active };
       if (editing.id) await api.put(`/erp/connections/${editing.id}`, payload);
       else await api.post("/erp/connections", payload);
-      toast.success("Connessione salvata");
+      toast.success(t("Connessione salvata"));
       setEditing(null); load();
     } catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
   };
 
   const testConn = async (id) => {
     setBusy(true);
-    try { const { data } = await api.post(`/erp/connections/${id}/test`); toast.success(`Connessione OK (${data.status})`); load(); }
+    try { const { data } = await api.post(`/erp/connections/${id}/test`); toast.success(t("erp.testOk", { status: data.status })); load(); }
     catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
   };
 
   const doImport = async (id, resource) => {
     setBusy(true);
-    try { const { data } = await api.post(`/erp/connections/${id}/import?resource=${resource}`); toast.success(`Importati ${data.imported} ${resource === "catalog" ? "prodotti" : "clienti"}`); }
+    try { const { data } = await api.post(`/erp/connections/${id}/import?resource=${resource}`); toast.success(resource === "catalog" ? t("erp.importedProducts", { n: data.imported }) : t("erp.importedCustomers", { n: data.imported })); }
     catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Eliminare questa connessione?")) return;
-    await api.delete(`/erp/connections/${id}`); toast.success("Connessione eliminata"); load();
+    if (!window.confirm(t("Eliminare questa connessione?"))) return;
+    await api.delete(`/erp/connections/${id}`); toast.success(t("Connessione eliminata")); load();
   };
 
   const retryJob = async (id) => {
-    try { await api.post(`/erp/jobs/${id}/retry`); toast.success("Retry avviato"); load(); }
+    try { await api.post(`/erp/jobs/${id}/retry`); toast.success(t("Retry avviato")); load(); }
     catch (err) { toast.error(formatApiError(err)); }
   };
 
@@ -111,9 +113,9 @@ export default function ErpSetup() {
     };
     return (
       <div className="animate-fade-up max-w-2xl">
-        <button onClick={() => setEditing(null)} className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={16} /> Connettori</button>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mb-1">{editing.id ? "Modifica" : "Configura"} · {editing.name}</h1>
-        <p className="text-sm text-muted-foreground mb-6">Ogni connettore è un modulo indipendente sopra il formato standard <code className="font-mono text-xs">ordia.order.v1</code>.</p>
+        <button onClick={() => setEditing(null)} className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={16} /> {t("Connettori")}</button>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight mb-1">{editing.id ? t("Modifica") : t("Configura")} · {editing.name}</h1>
+        <p className="text-sm text-muted-foreground mb-6">{t("Ogni connettore è un modulo indipendente sopra il formato standard")} <code className="font-mono text-xs">ordia.order.v1</code>.</p>
 
         {editing._help && (
           <div data-testid="connector-wizard-help" className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
@@ -123,7 +125,7 @@ export default function ErpSetup() {
             </div>
             {editing._help.ask_vendor && (
               <div className="rounded-lg bg-white/70 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Cosa chiedere al fornitore</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t("Cosa chiedere al fornitore")}</p>
                 <p className="text-sm text-foreground">{editing._help.ask_vendor}</p>
               </div>
             )}
@@ -138,12 +140,12 @@ export default function ErpSetup() {
 
         <div className="rounded-xl border border-border bg-white p-5 space-y-4">
           <div>
-            <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Nome connessione</label>
+            <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Nome connessione")}</label>
             <input data-testid="conn-name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className="mt-1.5 w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </div>
           {editing._fields.map((f) => (
             <div key={f}>
-              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{FIELD_LABELS[f] || f}</label>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t(FIELD_LABELS[f] || f)}</label>
               <input
                 data-testid={`conn-${f}`}
                 type={f === "auth_token" ? "password" : "text"}
@@ -157,16 +159,16 @@ export default function ErpSetup() {
           ))}
           <label className="flex items-center gap-2 text-sm">
             <input data-testid="conn-active" type="checkbox" checked={editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} className="h-4 w-4 rounded border-input" />
-            Connessione attiva (riceve gli export automatici)
+            {t("Connessione attiva (riceve gli export automatici)")}
           </label>
         </div>
 
         <details className="mt-4 rounded-xl border border-border bg-white p-5">
-          <summary className="cursor-pointer text-sm font-semibold">Mapping avanzato (campi, prodotti, unità, IVA, magazzini, listini)</summary>
+          <summary className="cursor-pointer text-sm font-semibold">{t("Mapping avanzato (campi, prodotti, unità, IVA, magazzini, listini)")}</summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {MAP_FIELDS.map(([k, label, ph]) => (
               <div key={k}>
-                <label className="text-xs font-medium text-muted-foreground">{label}</label>
+                <label className="text-xs font-medium text-muted-foreground">{t(label)}</label>
                 <textarea
                   data-testid={`map-${k}`}
                   rows={2}
@@ -181,8 +183,8 @@ export default function ErpSetup() {
         </details>
 
         <div className="mt-4 flex gap-2">
-          <button onClick={() => setEditing(null)} className="rounded-lg border border-input bg-white px-5 py-2.5 text-sm font-medium hover:bg-secondary">Annulla</button>
-          <button data-testid="save-connection" onClick={onSave} disabled={busy} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">{busy ? "Salvataggio…" : "Salva connessione"}</button>
+          <button onClick={() => setEditing(null)} className="rounded-lg border border-input bg-white px-5 py-2.5 text-sm font-medium hover:bg-secondary">{t("Annulla")}</button>
+          <button data-testid="save-connection" onClick={onSave} disabled={busy} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">{busy ? t("Salvataggio…") : t("Salva connessione")}</button>
         </div>
       </div>
     );
@@ -195,8 +197,8 @@ export default function ErpSetup() {
       <div className="mb-6 flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary"><Plug size={22} /></span>
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Integrazioni ERP</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Architettura ERP-first modulare. Nessun ordine va perso: gli export falliti restano in coda e sono riprovabili.</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">{t("Integrazioni ERP")}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t("Architettura ERP-first modulare. Nessun ordine va perso: gli export falliti restano in coda e sono riprovabili.")}</p>
         </div>
       </div>
 
@@ -210,7 +212,7 @@ export default function ErpSetup() {
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-sm font-bold">{c.name.slice(0, 2).toUpperCase()}</span>
                   <div>
                     <p className="font-semibold flex items-center gap-2">{c.name}
-                      {c.active && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary">attiva</span>}
+                      {c.active && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary">{t("attiva")}</span>}
                     </p>
                     <p className="text-xs text-muted-foreground">{connectors.find((k) => k.type === c.connector_type)?.name || c.connector_type}</p>
                   </div>
@@ -230,7 +232,7 @@ export default function ErpSetup() {
       )}
 
       {/* Connector marketplace */}
-      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">Aggiungi un connettore</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("Aggiungi un connettore")}</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {connectors.map((k) => (
           <button
@@ -242,7 +244,7 @@ export default function ErpSetup() {
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary"><Plus size={18} className="text-primary" /></span>
             <div>
               <p className="font-semibold">{k.name}</p>
-              <p className="text-xs text-muted-foreground">{k.capabilities.length} funzioni · {k.transport.toUpperCase()}</p>
+              <p className="text-xs text-muted-foreground">{t("erp.connectorMeta", { n: k.capabilities.length, transport: k.transport.toUpperCase() })}</p>
             </div>
           </button>
         ))}
@@ -250,14 +252,14 @@ export default function ErpSetup() {
 
       {/* Sync logs */}
       <div className="mt-8">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">Log di sincronizzazione</p>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("Log di sincronizzazione")}</p>
         <div className="rounded-xl border border-border bg-white overflow-hidden">
           {jobs.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted-foreground">Nessuna sincronizzazione ancora.</p>
+            <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t("Nessuna sincronizzazione ancora.")}</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-secondary/40 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr><th className="px-4 py-2.5 text-left">Stato</th><th className="px-4 py-2.5 text-left">Cliente</th><th className="px-4 py-2.5 text-left">Connettore</th><th className="px-4 py-2.5 text-left">Tentativi</th><th className="px-4 py-2.5 text-left">Dettaglio</th><th className="px-4 py-2.5"></th></tr>
+                <tr><th className="px-4 py-2.5 text-left">{t("Stato")}</th><th className="px-4 py-2.5 text-left">{t("Cliente")}</th><th className="px-4 py-2.5 text-left">{t("Connettore")}</th><th className="px-4 py-2.5 text-left">{t("Tentativi")}</th><th className="px-4 py-2.5 text-left">{t("Dettaglio")}</th><th className="px-4 py-2.5"></th></tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {jobs.map((j) => (
@@ -265,15 +267,15 @@ export default function ErpSetup() {
                     <td className="px-4 py-2.5">
                       {j.status === "success"
                         ? <span className="flex items-center gap-1.5 text-emerald-600"><CheckCircle2 size={14} /> OK</span>
-                        : <span className="flex items-center gap-1.5 text-red-500"><XCircle size={14} /> Errore</span>}
+                        : <span className="flex items-center gap-1.5 text-red-500"><XCircle size={14} /> {t("Errore")}</span>}
                     </td>
                     <td className="px-4 py-2.5">{j.customer_name || "—"}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{j.connector_name}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{j.attempts}</td>
-                    <td className="px-4 py-2.5 max-w-[220px] truncate text-xs text-muted-foreground" title={j.last_error || ""}>{j.last_error || "Inviato"}</td>
+                    <td className="px-4 py-2.5 max-w-[220px] truncate text-xs text-muted-foreground" title={j.last_error || ""}>{j.last_error || t("Inviato")}</td>
                     <td className="px-4 py-2.5 text-right">
                       {j.status === "error" && (
-                        <button data-testid={`retry-${j.id}`} onClick={() => retryJob(j.id)} className="flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs font-medium hover:bg-secondary"><RefreshCw size={12} /> Riprova</button>
+                        <button data-testid={`retry-${j.id}`} onClick={() => retryJob(j.id)} className="flex items-center gap-1 rounded-md border border-input px-2 py-1 text-xs font-medium hover:bg-secondary"><RefreshCw size={12} /> {t("Riprova")}</button>
                       )}
                     </td>
                   </tr>
@@ -283,6 +285,10 @@ export default function ErpSetup() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+v>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/context/I18nContext";
 
 const STATUS = {
   needs_review: { label: "Da Revisionare", cls: "text-amber-700 bg-amber-50 border-amber-200" },
@@ -8,6 +9,7 @@ const STATUS = {
 };
 
 export function StatusBadge({ status, className }) {
+  const { t } = useI18n();
   const s = STATUS[status] || STATUS.ready;
   return (
     <span
@@ -19,7 +21,7 @@ export function StatusBadge({ status, className }) {
       )}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-      {s.label}
+      {t(s.label)}
     </span>
   );
 }

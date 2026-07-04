@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/context/I18nContext";
 import { formatApiError } from "@/lib/api";
 import { ArrowRight, Sparkle } from "@phosphor-icons/react";
 
@@ -8,6 +9,7 @@ const WAREHOUSE = "https://images.pexels.com/photos/4481327/pexels-photo-4481327
 
 export default function Register() {
   const { register } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [form, setForm] = useState({ company_name: "", name: "", email: "", password: "" });
   const [error, setError] = useState("");
@@ -53,16 +55,16 @@ export default function Register() {
             <span className="font-display font-bold text-xl tracking-[0.18em]">ORDIA</span>
           </div>
 
-          <h1 className="font-display text-3xl font-black tracking-tighter mb-1">Crea il tuo spazio</h1>
+          <h1 className="font-display text-3xl font-black tracking-tighter mb-1">{t("Crea il tuo spazio")}</h1>
           <p className="text-sm text-muted-foreground mb-6">
-            Include un catalogo per grossisti alimentari già pronto, per provare subito l'estrazione.
+            {t("Include un catalogo per grossisti alimentari già pronto, per provare subito l'estrazione.")}
           </p>
 
           <form onSubmit={submit} className="space-y-4">
-            {field("company_name", "Azienda", "text", "Fresh Foods Ingrosso")}
-            {field("name", "Il tuo nome", "text", "Alessandro Rossi")}
-            {field("email", "Email", "email", "tu@azienda.com")}
-            {field("password", "Password", "password", "Almeno 6 caratteri")}
+            {field("company_name", t("Azienda"), "text", "Fresh Foods Ingrosso")}
+            {field("name", t("Il tuo nome"), "text", "Alessandro Rossi")}
+            {field("email", t("Email"), "email", "tu@azienda.com")}
+            {field("password", t("Password"), "password", t("Almeno 6 caratteri"))}
 
             {error && (
               <p data-testid="register-error" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
@@ -76,15 +78,15 @@ export default function Register() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
-              {loading ? "Creazione…" : "Crea spazio di lavoro"}
+              {loading ? t("Creazione…") : t("Crea spazio di lavoro")}
               {!loading && <ArrowRight size={16} weight="bold" />}
             </button>
           </form>
 
           <p className="mt-6 text-sm text-muted-foreground">
-            Hai già un account?{" "}
+            {t("Hai già un account?")}{" "}
             <Link data-testid="go-to-login" to="/login" className="font-medium text-foreground underline underline-offset-4">
-              Accedi
+              {t("Accedi")}
             </Link>
           </p>
         </div>
@@ -96,11 +98,10 @@ export default function Register() {
         <div className="absolute inset-0 flex flex-col justify-end p-12 text-white">
           <Sparkle size={28} weight="fill" className="mb-4 opacity-80" />
           <h2 className="font-display text-3xl font-black tracking-tight leading-tight max-w-md">
-            Il sistema operativo per la gestione ordini.
+            {t("Il sistema operativo per la gestione ordini.")}
           </h2>
           <p className="mt-3 text-sm text-white/70 max-w-md leading-relaxed">
-            Ogni correzione dell'operatore insegna a Ordia. Impara i tuoi clienti, le loro abitudini e le
-            loro abbreviazioni — e non ripete mai un errore.
+            {t("Ogni correzione dell'operatore insegna a Ordia. Impara i tuoi clienti, le loro abitudini e le loro abbreviazioni — e non ripete mai un errore.")}
           </p>
         </div>
       </div>

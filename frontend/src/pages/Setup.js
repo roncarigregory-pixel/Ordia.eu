@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -24,6 +25,7 @@ const CARDS = [
 export default function Setup() {
   const [data, setData] = useState(null);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   useEffect(() => {
     api.get("/integrations").then(({ data }) => setData(data)).catch(() => {});
@@ -33,9 +35,9 @@ export default function Setup() {
 
   return (
     <div className="animate-fade-up max-w-5xl">
-      <h1 className="font-display text-4xl font-black tracking-tighter">Configurazione</h1>
+      <h1 className="font-display text-4xl font-black tracking-tighter">{t("Configurazione")}</h1>
       <p className="mt-1 text-sm text-muted-foreground mb-8">
-        Il tuo consulente tecnico integrato. Collega i canali d'ordine e l'ERP passo dopo passo.
+        {t("Il tuo consulente tecnico integrato. Collega i canali d'ordine e l'ERP passo dopo passo.")}
       </p>
 
       {!data ? (
@@ -43,7 +45,7 @@ export default function Setup() {
       ) : (
         <div className="rounded-md border border-border bg-white p-6 mb-8">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Avanzamento setup</span>
+            <span className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Avanzamento setup")}</span>
             <span data-testid="setup-progress" className="font-mono text-sm font-medium">{data.completed}/{data.total} · {data.progress}%</span>
           </div>
           <div className="h-2 rounded-full bg-secondary overflow-hidden">
@@ -76,10 +78,10 @@ export default function Setup() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-display font-bold tracking-tight">{c.title}</h3>
+                  <h3 className="font-display font-bold tracking-tight">{t(c.title)}</h3>
                   {step?.done && <CheckCircle size={16} weight="fill" className="text-emerald-500" />}
                 </div>
-                <p className="mt-0.5 text-sm text-muted-foreground">{c.desc}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{t(c.desc)}</p>
                 {status && status !== "not_configured" && (
                   <div className="mt-2"><StatusBadge status={status === "connected" ? "validated" : status === "error" ? "needs_review" : "ready"} /></div>
                 )}

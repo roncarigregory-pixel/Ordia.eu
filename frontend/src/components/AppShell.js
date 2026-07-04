@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n, LanguageToggle } from "@/context/I18nContext";
 import { api } from "@/lib/api";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { OnboardingProvider } from "@/components/Onboarding";
@@ -20,6 +21,7 @@ const NAV = [
 
 export function AppShell({ children }) {
   const { user, logout, pilotMode } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [notifCount, setNotifCount] = useState(0);
 
@@ -41,7 +43,7 @@ export function AppShell({ children }) {
           <span className="font-display font-bold text-lg tracking-[0.18em]">ORDIA</span>
           {pilotMode && (
             <span data-testid="pilot-badge" className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-              Demo
+              {t("Demo")}
             </span>
           )}
         </div>
@@ -52,7 +54,7 @@ export function AppShell({ children }) {
             onClick={() => navigate("/app/new")}
             className="w-full flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-primary/90"
           >
-            <Plus size={18} /> Nuovo Ordine
+            <Plus size={18} /> {t("Nuovo Ordine")}
           </button>
           <GlobalSearch />
         </div>
@@ -72,7 +74,7 @@ export function AppShell({ children }) {
               }
             >
               <item.icon size={19} />
-              {item.label}
+              {t(item.label)}
               {item.to === "/app/notifications" && notifCount > 0 && (
                 <span data-testid="notif-badge" className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{notifCount}</span>
               )}
@@ -87,7 +89,7 @@ export function AppShell({ children }) {
               <p className="text-sm font-medium truncate">{user?.name}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
-            <button data-testid="logout-button" onClick={logout} className="text-muted-foreground hover:text-foreground transition-colors" title={pilotMode ? "Esci dalla demo" : "Esci"}>
+            <button data-testid="logout-button" onClick={logout} className="text-muted-foreground hover:text-foreground transition-colors" title={pilotMode ? t("Esci dalla demo") : t("Esci")}>
               <LogOut size={17} />
             </button>
           </div>
@@ -95,14 +97,21 @@ export function AppShell({ children }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Desktop top bar — language switcher always visible top-right */}
+        <header className="hidden md:flex items-center justify-end h-12 px-6 border-b border-border bg-white/70 backdrop-blur">
+          <LanguageToggle />
+        </header>
         <header className="md:hidden flex items-center justify-between h-14 px-4 border-b border-border bg-white">
           <div className="flex items-center gap-2">
             <img src={LOGO} alt="Ordia" className="h-6 w-6 rounded object-contain" />
             <span className="font-display font-bold tracking-[0.18em]">ORDIA</span>
           </div>
-          <button data-testid="new-order-cta-mobile" onClick={() => navigate("/app/new")} className="rounded-lg bg-primary text-primary-foreground p-2">
-            <Plus size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <button data-testid="new-order-cta-mobile" onClick={() => navigate("/app/new")} className="rounded-lg bg-primary text-primary-foreground p-2">
+              <Plus size={18} />
+            </button>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-[1600px] mx-auto w-full p-6 md:p-8 pb-32 md:pb-8">{children}</div>
@@ -121,7 +130,7 @@ export function AppShell({ children }) {
               }
             >
               <item.icon size={20} />
-              {item.short}
+              {t(item.short)}
               {item.to === "/app/notifications" && notifCount > 0 && (
                 <span className="absolute top-0 right-1/4 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{notifCount}</span>
               )}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/context/I18nContext";
 import { formatApiError } from "@/lib/api";
 import { ArrowRight, Sparkle } from "@phosphor-icons/react";
 
@@ -8,6 +9,7 @@ const WAREHOUSE = "https://images.pexels.com/photos/4481327/pexels-photo-4481327
 
 export default function Login() {
   const { login } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,12 +39,12 @@ export default function Login() {
             <span className="font-display font-bold text-xl tracking-[0.18em]">ORDIA</span>
           </div>
 
-          <h1 className="font-display text-3xl font-black tracking-tighter mb-1">Bentornato</h1>
-          <p className="text-sm text-muted-foreground mb-8">Accedi al tuo centro di comando ordini.</p>
+          <h1 className="font-display text-3xl font-black tracking-tighter mb-1">{t("Bentornato")}</h1>
+          <p className="text-sm text-muted-foreground mb-8">{t("Accedi al tuo centro di comando ordini.")}</p>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Email</label>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Email")}</label>
               <input
                 data-testid="login-email-input"
                 type="email"
@@ -54,7 +56,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Password</label>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Password")}</label>
               <input
                 data-testid="login-password-input"
                 type="password"
@@ -78,15 +80,15 @@ export default function Login() {
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
-              {loading ? "Accesso in corso…" : "Accedi"}
+              {loading ? t("Accesso in corso…") : t("Accedi")}
               {!loading && <ArrowRight size={16} weight="bold" />}
             </button>
           </form>
 
           <p className="mt-6 text-sm text-muted-foreground">
-            Nuovo su Ordia?{" "}
+            {t("Nuovo su Ordia?")}{" "}
             <Link data-testid="go-to-register" to="/register" className="font-medium text-foreground underline underline-offset-4">
-              Crea un account
+              {t("Crea un account")}
             </Link>
           </p>
 
@@ -102,11 +104,10 @@ export default function Login() {
         <div className="absolute inset-0 flex flex-col justify-end p-12 text-white">
           <Sparkle size={28} weight="fill" className="mb-4 opacity-80" />
           <h2 className="font-display text-3xl font-black tracking-tight leading-tight max-w-md">
-            Basta riscrivere gli ordini a mano.
+            {t("Basta riscrivere gli ordini a mano.")}
           </h2>
           <p className="mt-3 text-sm text-white/70 max-w-md leading-relaxed">
-            Ordia legge gli ordini da WhatsApp, email, PDF, fogli di calcolo e foto — poi estrae,
-            abbina e valida automaticamente. Tu devi solo confermare.
+            {t("Ordia legge gli ordini da WhatsApp, email, PDF, fogli di calcolo e foto — poi estrae, abbina e valida automaticamente. Tu devi solo confermare.")}
           </p>
         </div>
       </div>

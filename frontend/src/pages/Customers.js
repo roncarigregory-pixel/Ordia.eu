@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Users, ArrowUpRight, Upload, Loader2, RefreshCw, Download } from "lucide-react";
@@ -11,6 +12,7 @@ export default function Customers() {
   const [importing, setImporting] = useState(false);
   const fileRef = useRef(null);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const loadCustomers = useCallback(
     () => api.get("/customers").then(({ data }) => setCustomers(data)).catch(() => setCustomers([])),
@@ -45,7 +47,7 @@ export default function Customers() {
         (data.unmatched_count ? ` · ${data.unmatched_count} righe non abbinate` : ""));
       await loadCustomers();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Import non riuscito. Controlla il formato del file.");
+      toast.error(err?.response?.data?.detail || t("Import non riuscito. Controlla il formato del file."));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -61,8 +63,8 @@ export default function Customers() {
     <div className="animate-fade-up">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Clienti</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Storico ordini, volumi e prodotti abituali per ogni cliente.</p>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{t("Clienti")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("Storico ordini, volumi e prodotti abituali per ogni cliente.")}</p>
         </div>
         <div>
           <input
@@ -80,16 +82,16 @@ export default function Customers() {
             className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
           >
             {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            {importing ? "Importazione…" : "Importa clienti"}
+            {importing ? t("Importazione…") : t("Importa clienti")}
           </button>
           <button
             data-testid="download-template-button"
             onClick={downloadModel}
             className="mt-2 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
-            <Download size={13} /> Scarica il modello CSV
+            <Download size={13} /> {t("Scarica il modello CSV")}
           </button>
-          <p className="mt-1 text-right text-xs text-muted-foreground">CSV/Excel · colonne: cliente, prodotto, quantità</p>
+          <p className="mt-1 text-right text-xs text-muted-foreground">{t("CSV/Excel · colonne: cliente, prodotto, quantità")}</p>
         </div>
       </div>
 
@@ -97,7 +99,7 @@ export default function Customers() {
         <div data-testid="reorder-alert" className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <RefreshCw size={16} className="shrink-0" />
           <span>
-            <span className="font-semibold">{customers.filter((c) => c.needs_reorder).length} clienti</span> non ordinano da un po'. Aprili e proponi un <span className="font-semibold">riordino con un click</span>.
+            <span className="font-semibold">{customers.filter((c) => c.needs_reorder).length} {t("clienti")}</span> {t("non ordinano da un po'. Aprili e proponi un")} <span className="font-semibold">{t("riordino con un click")}</span>.
           </span>
         </div>
       )}
@@ -108,7 +110,7 @@ export default function Customers() {
           data-testid="customers-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Cerca cliente…"
+          placeholder={t("Cerca cliente…")}
           className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
@@ -120,7 +122,7 @@ export default function Customers() {
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-white p-16 text-center">
           <Users size={32} className="mx-auto text-slate-300" />
-          <p className="mt-3 text-sm text-muted-foreground">Nessun cliente. I clienti compaiono automaticamente dagli ordini.</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t("Nessun cliente. I clienti compaiono automaticamente dagli ordini.")}</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -138,7 +140,7 @@ export default function Customers() {
                 {c.needs_reorder ? (
                   <span data-testid={`reorder-badge-${c.name}`} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
                     <RefreshCw size={11} />
-                    {c.days_since_last_order != null ? `Da riordinare · ${c.days_since_last_order}gg` : "Da riordinare"}
+                    {c.days_since_last_order != null ? `${t("Da riordinare")} · ${c.days_since_last_order}gg` : t("Da riordinare")}
                   </span>
                 ) : (
                   <ArrowUpRight size={16} className="text-slate-300 transition-colors group-hover:text-primary" />
@@ -146,11 +148,11 @@ export default function Customers() {
               </div>
               <p className="mt-3 truncate font-semibold">{c.name}</p>
               <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-                <span><span className="font-mono font-medium text-foreground">{c.orders}</span> ordini</span>
-                <span><span className="font-mono font-medium text-foreground">€{(c.volume || 0).toFixed(0)}</span> volume</span>
+                <span><span className="font-mono font-medium text-foreground">{c.orders}</span> {t("ordini")}</span>
+                <span><span className="font-mono font-medium text-foreground">€{(c.volume || 0).toFixed(0)}</span> {t("volume")}</span>
               </div>
               {c.favorite_products?.length > 0 && (
-                <p className="mt-2 truncate text-xs text-muted-foreground">Abituali: {c.favorite_products.join(", ")}</p>
+                <p className="mt-2 truncate text-xs text-muted-foreground">{t("Abituali:")} {c.favorite_products.join(", ")}</p>
               )}
             </button>
           ))}

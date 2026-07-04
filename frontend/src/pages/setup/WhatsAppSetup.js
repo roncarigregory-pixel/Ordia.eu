@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { SetupBack, Field, inputCls } from "./_shared";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -29,6 +30,7 @@ const ERRORS = [
 ];
 
 export default function WhatsAppSetup() {
+  const { t } = useI18n();
   const [step, setStep] = useState(0);
   const [account, setAccount] = useState(null);
   const [form, setForm] = useState({ label: "WhatsApp Business", access_token: "", phone_number_id: "", waba_id: "", app_secret: "" });
@@ -51,7 +53,7 @@ export default function WhatsAppSetup() {
 
   const saveCreds = async () => {
     if (!form.access_token || !form.phone_number_id || !form.waba_id)
-      return toast.error("Compila Access Token, Phone Number ID e WABA ID.");
+      return toast.error(t("Compila Access Token, Phone Number ID e WABA ID."));
     setBusy(true);
     try {
       const { data } = await api.post("/integrations/whatsapp", form);
@@ -75,10 +77,10 @@ export default function WhatsAppSetup() {
       const { data: fresh } = await api.get("/integrations/whatsapp");
       setAccount(fresh.find((a) => a.id === accId) || fresh[0]);
       if (data.status === "connected") {
-        toast.success("Connessione WhatsApp attiva ✅");
+        toast.success(t("Connessione WhatsApp attiva ✅"));
         setTimeout(() => setStep(3), 600);
       } else {
-        setError(data.message || "Verifica fallita.");
+        setError(data.message || t("Verifica fallita."));
       }
     } catch (err) {
       clearInterval(timer);
@@ -89,11 +91,11 @@ export default function WhatsAppSetup() {
   };
 
   const sendTest = async () => {
-    if (!testTo) return toast.error("Inserisci il numero destinatario (con prefisso, es. 39333…).");
+    if (!testTo) return toast.error(t("Inserisci il numero destinatario (con prefisso, es. 39333…)."));
     setBusy(true);
     try {
       await api.post(`/integrations/whatsapp/${account.id}/test-message`, { to: testTo });
-      toast.success("Messaggio di prova inviato ✅");
+      toast.success(t("Messaggio di prova inviato ✅"));
       setStep(4);
     } catch (err) { toast.error(formatApiError(err)); } finally { setBusy(false); }
   };
@@ -101,7 +103,7 @@ export default function WhatsAppSetup() {
   const removeAccount = async () => {
     await api.delete(`/integrations/whatsapp/${account.id}`);
     setAccount(null); setStep(0); setForm({ label: "WhatsApp Business", access_token: "", phone_number_id: "", waba_id: "", app_secret: "" });
-    toast.success("Account rimosso");
+    toast.success(t("Account rimosso"));
   };
 
   const webhookUrl = `${BACKEND}/api/webhooks/whatsapp`;
@@ -113,7 +115,7 @@ export default function WhatsAppSetup() {
           <div className={cn("flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium",
             i < step ? "bg-emerald-50 text-emerald-700" : i === step ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             {i < step ? <CheckCircle size={14} weight="fill" /> : <span className="font-mono">{i + 1}</span>}
-            {label}
+            {t(label)}
           </div>
           {i < 4 && <div className={cn("h-px w-4", i < step ? "bg-emerald-300" : "bg-border")} />}
         </div>
@@ -129,7 +131,7 @@ export default function WhatsAppSetup() {
           <div className="h-11 w-11 rounded-md bg-emerald-50 flex items-center justify-center"><WhatsappLogo size={24} weight="fill" className="text-emerald-600" /></div>
           <div>
             <h1 className="font-display text-3xl font-black tracking-tighter">WhatsApp Business</h1>
-            <p className="text-sm text-muted-foreground">Connetti il tuo numero in pochi minuti, senza supporto tecnico esterno.</p>
+            <p className="text-sm text-muted-foreground">{t("Connetti il tuo numero in pochi minuti, senza supporto tecnico esterno.")}</p>
           </div>
         </div>
         {account && <StatusBadge status={account.status === "connected" ? "validated" : account.status === "error" ? "needs_review" : "ready"} />}
@@ -140,20 +142,20 @@ export default function WhatsAppSetup() {
       {/* STEP 0 — Prerequisiti */}
       {step === 0 && (
         <div className="rounded-md border border-border bg-white p-6">
-          <h2 className="font-display text-lg font-bold tracking-tight mb-1">Cosa ti serve</h2>
-          <p className="text-sm text-muted-foreground mb-5">Prepara questi elementi in Meta Business. Ti guidiamo a trovare ogni valore nel passo successivo.</p>
+          <h2 className="font-display text-lg font-bold tracking-tight mb-1">{t("Cosa ti serve")}</h2>
+          <p className="text-sm text-muted-foreground mb-5">{t("Prepara questi elementi in Meta Business. Ti guidiamo a trovare ogni valore nel passo successivo.")}</p>
           <div className="space-y-3">
             {PREREQS.map((p) => (
               <div key={p.t} className="flex items-start gap-3">
                 <ShieldCheck size={20} className="text-emerald-500 mt-0.5 shrink-0" />
-                <div><p className="text-sm font-medium">{p.t}</p><p className="text-sm text-muted-foreground">{p.d}</p></div>
+                <div><p className="text-sm font-medium">{t(p.t)}</p><p className="text-sm text-muted-foreground">{t(p.d)}</p></div>
               </div>
             ))}
           </div>
-          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer" className="mt-5 inline-block text-sm text-blue-600 underline underline-offset-4">Apri Meta Business Settings ↗</a>
+          <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer" className="mt-5 inline-block text-sm text-blue-600 underline underline-offset-4">{t("Apri Meta Business Settings ↗")}</a>
           <div className="mt-6">
             <button data-testid="wa-start" onClick={() => setStep(1)} className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90">
-              Ho tutto pronto <ArrowRight size={16} weight="bold" />
+              {t("Ho tutto pronto")} <ArrowRight size={16} weight="bold" />
             </button>
           </div>
         </div>

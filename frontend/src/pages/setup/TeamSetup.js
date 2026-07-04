@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { SetupBack, Field, inputCls } from "./_shared";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -19,6 +20,7 @@ export default function TeamSetup() {
   const [members, setMembers] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "operator" });
+  const { t } = useI18n();
 
   const load = useCallback(() => api.get("/team").then(({ data }) => setMembers(data)).catch(() => setMembers([])), []);
   useEffect(() => { load(); }, [load]);
@@ -26,10 +28,10 @@ export default function TeamSetup() {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const add = async () => {
-    if (!form.name || !form.email || form.password.length < 6) return toast.error("Compila nome, email e password (min 6).");
+    if (!form.name || !form.email || form.password.length < 6) return toast.error(t("Compila nome, email e password (min 6)."));
     try {
       await api.post("/team", form);
-      toast.success("Membro aggiunto");
+      toast.success(t("Membro aggiunto"));
       setOpen(false);
       setForm({ name: "", email: "", password: "", role: "operator" });
       load();
@@ -39,12 +41,12 @@ export default function TeamSetup() {
   };
 
   const changeRole = async (m, role) => {
-    try { await api.put(`/team/${m.id}/role`, { role }); load(); toast.success("Ruolo aggiornato"); }
+    try { await api.put(`/team/${m.id}/role`, { role }); load(); toast.success(t("Ruolo aggiornato")); }
     catch (err) { toast.error(formatApiError(err)); }
   };
 
   const remove = async (m) => {
-    try { await api.delete(`/team/${m.id}`); load(); toast.success("Membro rimosso"); }
+    try { await api.delete(`/team/${m.id}`); load(); toast.success(t("Membro rimosso")); }
     catch (err) { toast.error(formatApiError(err)); }
   };
 
@@ -55,12 +57,12 @@ export default function TeamSetup() {
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-md bg-secondary flex items-center justify-center"><UsersThree size={22} /></div>
           <div>
-            <h1 className="font-display text-3xl font-black tracking-tighter">Team</h1>
-            <p className="text-sm text-muted-foreground">Accesso multi-tenant: ognuno vede solo i dati della propria azienda.</p>
+            <h1 className="font-display text-3xl font-black tracking-tighter">{t("Team")}</h1>
+            <p className="text-sm text-muted-foreground">{t("Accesso multi-tenant: ognuno vede solo i dati della propria azienda.")}</p>
           </div>
         </div>
         <button data-testid="team-add-button" onClick={() => setOpen(true)} className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2.5 text-sm font-medium hover:bg-primary/90">
-          <Plus size={18} weight="bold" /> Aggiungi
+          <Plus size={18} weight="bold" /> {t("Aggiungi")}
         </button>
       </div>
 
@@ -91,12 +93,12 @@ export default function TeamSetup() {
       </div>
 
       <div className="mt-6 rounded-md border border-border bg-white p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground mb-3">Ruoli disponibili</p>
+        <p className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground mb-3">{t("Ruoli disponibili")}</p>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
           {ROLES.map((r) => (
             <div key={r.key} className="flex items-baseline gap-2 text-sm">
               <span className="font-medium">{r.label}</span>
-              <span className="text-muted-foreground text-xs">— {r.desc}</span>
+              <span className="text-muted-foreground text-xs">— {t(r.desc)}</span>
             </div>
           ))}
         </div>
@@ -104,20 +106,20 @@ export default function TeamSetup() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="font-display tracking-tight">Aggiungi membro</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="font-display tracking-tight">{t("Aggiungi membro")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Field label="Nome" testid="member-name"><input value={form.name} onChange={set("name")} className={inputCls} /></Field>
-            <Field label="Email" testid="member-email"><input type="email" value={form.email} onChange={set("email")} className={inputCls} /></Field>
-            <Field label="Password" testid="member-password"><input type="password" value={form.password} onChange={set("password")} className={inputCls} /></Field>
-            <Field label="Ruolo" testid="member-role">
+            <Field label={t("Nome")} testid="member-name"><input value={form.name} onChange={set("name")} className={inputCls} /></Field>
+            <Field label={t("Email")} testid="member-email"><input type="email" value={form.email} onChange={set("email")} className={inputCls} /></Field>
+            <Field label={t("Password")} testid="member-password"><input type="password" value={form.password} onChange={set("password")} className={inputCls} /></Field>
+            <Field label={t("Ruolo")} testid="member-role">
               <select value={form.role} onChange={set("role")} className={inputCls}>
                 {ROLES.filter((r) => r.key !== "owner").map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
               </select>
             </Field>
           </div>
           <DialogFooter>
-            <button onClick={() => setOpen(false)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">Annulla</button>
-            <button data-testid="member-save" onClick={add} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90">Aggiungi</button>
+            <button onClick={() => setOpen(false)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">{t("Annulla")}</button>
+            <button data-testid="member-save" onClick={add} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90">{t("Aggiungi")}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

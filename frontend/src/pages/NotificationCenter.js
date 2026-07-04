@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,11 +29,11 @@ const TYPE_OPTIONS = [
   ["new_pdf", "Nuovi documenti"], ["auto_confirmed", "Auto-confermati"],
 ];
 
-function timeAgo(iso) {
+function timeAgo(iso, t) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "adesso";
-  if (s < 3600) return `${Math.floor(s / 60)} min fa`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h fa`;
+  if (s < 60) return t("adesso");
+  if (s < 3600) return t("time.minAgo", { n: Math.floor(s / 60) });
+  if (s < 86400) return t("time.hAgo", { n: Math.floor(s / 3600) });
   return new Date(iso).toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
 }
 
@@ -44,6 +45,7 @@ export default function NotificationCenter() {
   const [q, setQ] = useState("");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
@@ -78,13 +80,13 @@ export default function NotificationCenter() {
     <div className="animate-fade-up">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Centro Notifiche</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Il cuore operativo della tua giornata: tutto ciò che richiede attenzione, in tempo reale.</p>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">{t("Centro Notifiche")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("Il cuore operativo della tua giornata: tutto ciò che richiede attenzione, in tempo reale.")}</p>
         </div>
         <div className="flex items-center gap-2">
           {[["high", counts.high], ["medium", counts.medium], ["low", counts.low]].map(([p, n]) => (
             <div key={p} data-testid={`count-${p}`} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium", PRIORITY[p].tint)}>
-              <span className={cn("h-2 w-2 rounded-full", PRIORITY[p].dot)} /> {n} {PRIORITY[p].label}
+              <span className={cn("h-2 w-2 rounded-full", PRIORITY[p].dot)} /> {n} {t(PRIORITY[p].label)}
             </div>
           ))}
         </div>
@@ -100,16 +102,16 @@ export default function NotificationCenter() {
               onClick={() => setStatus(v)}
               className={cn("rounded-md px-3 py-1.5 text-sm font-medium transition-colors", status === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
         <select data-testid="type-filter" value={type} onChange={(e) => setType(e.target.value)} className="rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring">
-          {TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
         </select>
         <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input data-testid="notif-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca cliente…" className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          <input data-testid="notif-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cerca cliente…")} className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
         </div>
       </div>
 
@@ -119,8 +121,8 @@ export default function NotificationCenter() {
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-border bg-white p-16 text-center">
           <Bell size={32} className="mx-auto text-slate-300" />
-          <p className="mt-3 font-medium">Nessuna notifica</p>
-          <p className="text-sm text-muted-foreground">Tutto sotto controllo. Le nuove attività compaiono qui.</p>
+          <p className="mt-3 font-medium">{t("Nessuna notifica")}</p>
+          <p className="text-sm text-muted-foreground">{t("Tutto sotto controllo. Le nuove attività compaiono qui.")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -146,29 +148,29 @@ export default function NotificationCenter() {
                       <span className={cn("h-2 w-2 rounded-full", pr.dot)} />
                       <p className="font-semibold">{n.title}</p>
                       {n.customer_name && <span className="text-sm text-muted-foreground">· {n.customer_name}</span>}
-                      {n.status !== "open" && <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{n.status === "resolved" ? "risolta" : "archiviata"}</span>}
-                      <span className="ml-auto font-mono text-xs text-muted-foreground">{timeAgo(n.created_at)}</span>
+                      {n.status !== "open" && <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{n.status === "resolved" ? t("risolta") : t("archiviata")}</span>}
+                      <span className="ml-auto font-mono text-xs text-muted-foreground">{timeAgo(n.created_at, t)}</span>
                     </div>
                     {n.detail && <p className="mt-1 text-sm text-muted-foreground">{n.detail}</p>}
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       {n.suggested_action && (
-                        <span className="rounded-md bg-ai-soft px-2 py-1 text-xs font-medium text-ai">Consigliato: {n.suggested_action}</span>
+                        <span className="rounded-md bg-ai-soft px-2 py-1 text-xs font-medium text-ai">{t("Consigliato:")} {n.suggested_action}</span>
                       )}
                       {n.order_id && (
                         <button data-testid={`open-order-${n.id}`} onClick={() => navigate(`/app/orders/${n.order_id}`)} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium hover:bg-secondary">
-                          <ExternalLink size={13} /> Apri ordine
+                          <ExternalLink size={13} /> {t("Apri ordine")}
                         </button>
                       )}
                       {n.status === "open" && (
                         <>
-                          <button data-testid={`assign-${n.id}`} onClick={() => patch(n.id, { assigned_to: user?.id }, "Assegnata a te")} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium hover:bg-secondary">
-                            <UserCheck size={13} /> {n.assigned_to === user?.id ? "Tua" : "Assegna a me"}
+                          <button data-testid={`assign-${n.id}`} onClick={() => patch(n.id, { assigned_to: user?.id }, t("Assegnata a te"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium hover:bg-secondary">
+                            <UserCheck size={13} /> {n.assigned_to === user?.id ? t("Tua") : t("Assegna a me")}
                           </button>
-                          <button data-testid={`resolve-${n.id}`} onClick={() => patch(n.id, { status: "resolved" }, "Segnata come risolta")} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
-                            <Check size={13} /> Risolvi
+                          <button data-testid={`resolve-${n.id}`} onClick={() => patch(n.id, { status: "resolved" }, t("Segnata come risolta"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
+                            <Check size={13} /> {t("Risolvi")}
                           </button>
-                          <button data-testid={`archive-${n.id}`} onClick={() => patch(n.id, { status: "archived" }, "Archiviata")} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary">
-                            <Archive size={13} /> Archivia
+                          <button data-testid={`archive-${n.id}`} onClick={() => patch(n.id, { status: "archived" }, t("Archiviata"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary">
+                            <Archive size={13} /> {t("Archivia")}
                           </button>
                         </>
                       )}

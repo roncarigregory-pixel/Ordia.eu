@@ -81,6 +81,13 @@ export default function Landing() {
               {t("hero.title")}
             </h1>
             <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">{t("hero.sub")}</p>
+            <div data-testid="hero-positioning" className="mt-5 flex items-start gap-3 rounded-xl border border-ai/20 bg-ai-soft/60 px-4 py-3">
+              <Plug size={18} className="mt-0.5 shrink-0 text-ai" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">{t("hero.positioning")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t("hero.notErp")} {t("hero.notErp.d")}</p>
+              </div>
+            </div>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button onClick={tryDemo} disabled={loading} data-testid="landing-hero-demo" className="group inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:scale-[1.03] disabled:opacity-60">
                 {loading ? t("hero.cta.loading") : t("hero.cta")}
@@ -110,6 +117,30 @@ export default function Landing() {
                 <div className="font-display text-3xl font-extrabold text-primary">{n}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{l}</div>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Works with your ERP — positioning */}
+      <section id="erp" className="scroll-mt-20 bg-white py-20">
+        <div className="mx-auto max-w-6xl px-5">
+          <motion.div {...fade()} className="max-w-2xl">
+            <span className="text-sm font-semibold uppercase tracking-wide text-ai">{t("erp.kicker")}</span>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">{t("erp.title")}</h2>
+            <p className="mt-3 text-base text-muted-foreground">{t("erp.sub")}</p>
+          </motion.div>
+          <div className="mt-10 grid gap-5 sm:grid-cols-3">
+            {[
+              { icon: ShieldCheck, t: t("erp.b1.t"), d: t("erp.b1.d") },
+              { icon: Cpu, t: t("erp.b2.t"), d: t("erp.b2.d") },
+              { icon: Plug, t: t("erp.b3.t"), d: t("erp.b3.d") },
+            ].map((b, i) => (
+              <motion.div key={b.t} {...fade(i * 0.08)} className="rounded-2xl border border-border bg-secondary/30 p-6">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ai-soft text-ai"><b.icon size={20} /></div>
+                <h3 className="mt-4 font-bold">{b.t}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">{b.d}</p>
+              </motion.div>
             ))}
           </div>
         </div>

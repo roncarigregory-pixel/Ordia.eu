@@ -1,15 +1,17 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "@phosphor-icons/react";
+import { useI18n } from "@/context/I18nContext";
 
 export function SetupBack({ label = "Configurazione", to = "/app/setup" }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   return (
     <button
       data-testid="setup-back"
       onClick={() => navigate(to)}
       className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
     >
-      <ArrowLeft size={16} /> {label}
+      <ArrowLeft size={16} /> {t(label)}
     </button>
   );
 }

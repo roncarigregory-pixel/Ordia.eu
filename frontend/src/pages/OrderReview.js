@@ -9,6 +9,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api, formatApiError, API } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProductSearch } from "@/components/ProductSearch";
@@ -42,6 +43,7 @@ function suggestProducts(raw, products) {
 }
 
 function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, onCreate }) {
+  const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: it.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 20 : "auto" };
   const suggestions = !it.matched_product_id ? suggestProducts(it.raw_text, products) : [];
@@ -68,21 +70,21 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <p className="flex-1 truncate font-mono text-xs text-muted-foreground" title={it.raw_text}>
-              “{it.raw_text || "riga manuale"}”
+              “{it.raw_text || t("riga manuale")}”
             </p>
             <div className="flex shrink-0 items-center gap-2">
               <span className={cn("font-mono text-xs font-semibold", confColor(it.confidence))}>
                 {Math.round((it.confidence || 0) * 100)}%
               </span>
               {it.learned && (
-                <span title="Appreso da correzioni precedenti" className="flex items-center gap-1 rounded-full bg-ai-soft px-1.5 py-0.5 text-[10px] font-medium text-ai">
-                  <Sparkles size={10} /> appreso
+                <span title={t("Appreso da correzioni precedenti")} className="flex items-center gap-1 rounded-full bg-ai-soft px-1.5 py-0.5 text-[10px] font-medium text-ai">
+                  <Sparkles size={10} /> {t("appreso")}
                 </span>
               )}
-              <button data-testid={`duplicate-item-${it.id}`} onClick={() => onDuplicate(it.id)} className="text-slate-300 transition-colors hover:text-primary" title="Duplica">
+              <button data-testid={`duplicate-item-${it.id}`} onClick={() => onDuplicate(it.id)} className="text-slate-300 transition-colors hover:text-primary" title={t("Duplica")}>
                 <Copy size={15} />
               </button>
-              <button data-testid={`remove-item-${it.id}`} onClick={() => onRemove(it.id)} className="text-slate-300 transition-colors hover:text-red-500" title="Elimina">
+              <button data-testid={`remove-item-${it.id}`} onClick={() => onRemove(it.id)} className="text-slate-300 transition-colors hover:text-red-500" title={t("Elimina")}>
                 <Trash2 size={15} />
               </button>
             </div>
@@ -115,11 +117,11 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
 
           {it.matched_product_id ? (
             <p className="mt-2 font-mono text-xs text-muted-foreground">
-              {it.matched_sku} · €{(it.price || 0).toFixed(2)}/{it.unit} · riga €{((it.price || 0) * (it.quantity || 0)).toFixed(2)}
+              {it.matched_sku} · €{(it.price || 0).toFixed(2)}/{it.unit} · {t("riga")} €{((it.price || 0) * (it.quantity || 0)).toFixed(2)}
             </p>
           ) : suggestions.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="flex items-center gap-1 text-[11px] font-medium text-ai"><Sparkles size={11} /> Suggerimenti:</span>
+              <span className="flex items-center gap-1 text-[11px] font-medium text-ai"><Sparkles size={11} /> {t("Suggerimenti:")}</span>
               {suggestions.map((p) => (
                 <button
                   key={p.id}
@@ -141,6 +143,7 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
 export default function OrderReview() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [order, setOrder] = useState(null);
   const [products, setProducts] = useState([]);
   const [team, setTeam] = useState([]);
@@ -160,7 +163,7 @@ export default function OrderReview() {
     setTeam(t.data);
   }, [id]);
 
-  useEffect(() => { load().catch(() => toast.error("Impossibile caricare l'ordine")); }, [load]);
+  useEffect(() => { load().catch(() => toast.error(t("Impossibile caricare l'ordine"))); }, [load, t]);
 
   const setItems = (fn) => setOrder((prev) => ({ ...prev, line_items: fn(prev.line_items) }));
   const onUpdate = (itemId, patch) => setItems((items) => items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)));
@@ -185,7 +188,7 @@ export default function OrderReview() {
         matched_product_id: p.id, matched_sku: p.sku, matched_name: p.name,
         price: p.price, unit: p.unit || "unità", needs_review: false, confidence: 1,
       });
-      toast.success(`Prodotto «${name}» creato e abbinato`);
+      toast.success(t("review.productCreated", { name }));
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -217,7 +220,7 @@ export default function OrderReview() {
         notes: order.notes, line_items: order.line_items, assigned_to: order.assigned_to,
       });
       setOrder(data);
-      toast.success("Modifiche salvate");
+      toast.success(t("Modifiche salvate"));
       return true;
     } catch (err) {
       toast.error(formatApiError(err));
@@ -249,7 +252,7 @@ export default function OrderReview() {
     try {
       const { data } = await api.post(`/orders/${id}/validate`);
       setOrder(data);
-      toast.success("Ordine confermato");
+      toast.success(t("Ordine confermato"));
     } catch (err) { toast.error(formatApiError(err)); }
   };
 
@@ -263,7 +266,7 @@ export default function OrderReview() {
     const ext = format === "excel" ? "xlsx" : format;
     a.href = url; a.download = `ordine-${id.slice(0, 8)}.${ext}`; a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Esportato in ${ext.toUpperCase()}`);
+    toast.success(t("review.exported", { ext: ext.toUpperCase() }));
     load();
   };
 
@@ -286,7 +289,7 @@ export default function OrderReview() {
   return (
     <div className="animate-fade-up pb-24">
       <button data-testid="back-to-orders" onClick={() => navigate("/app/orders")} className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft size={16} /> Ordini
+        <ArrowLeft size={16} /> {t("Ordini")}
       </button>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -295,7 +298,7 @@ export default function OrderReview() {
             <input
               data-testid="customer-name-input"
               value={order.customer_name || ""}
-              placeholder="Cliente sconosciuto"
+              placeholder={t("Cliente sconosciuto")}
               onChange={(e) => setOrder((p) => ({ ...p, customer_name: e.target.value }))}
               className="font-display text-2xl sm:text-3xl font-bold tracking-tight bg-transparent outline-none focus:bg-secondary/50 rounded px-1 -ml-1 max-w-full"
             />
@@ -304,9 +307,9 @@ export default function OrderReview() {
           <div className="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
             <span>ID {order.id.slice(0, 8)}</span>
             <span>·</span>
-            <span>{order.line_items.length} articoli</span>
+            <span>{order.line_items.length} {t("articoli")}</span>
             <span>·</span>
-            <span>consegna:</span>
+            <span>{t("consegna:")}</span>
             <input
               data-testid="delivery-date-input"
               value={order.delivery_date || ""}
@@ -328,7 +331,7 @@ export default function OrderReview() {
             {team.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
           </select>
           <button data-testid="toggle-history" onClick={() => setShowHistory((s) => !s)} className="flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <History size={15} /> Cronologia <ChevronDown size={14} className={cn("transition-transform", showHistory && "rotate-180")} />
+            <History size={15} /> {t("Cronologia")} <ChevronDown size={14} className={cn("transition-transform", showHistory && "rotate-180")} />
           </button>
         </div>
       </div>
@@ -342,7 +345,7 @@ export default function OrderReview() {
                 <span className="font-mono text-xs text-muted-foreground">{new Date(h.ts).toLocaleString("it-IT")}</span>
               </div>
             ))}
-            {(!order.history || order.history.length === 0) && <p className="px-4 py-3 text-sm text-muted-foreground">Nessuna attività.</p>}
+            {(!order.history || order.history.length === 0) && <p className="px-4 py-3 text-sm text-muted-foreground">{t("Nessuna attività.")}</p>}
           </div>
         </motion.div>
       )}
@@ -350,7 +353,7 @@ export default function OrderReview() {
       {reviewCount > 0 && (
         <div data-testid="review-banner" className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <AlertTriangle size={17} />
-          {reviewCount} {reviewCount === 1 ? "articolo richiede" : "articoli richiedono"} la tua conferma prima della validazione.
+          {reviewCount === 1 ? t("review.banner.one", { n: reviewCount }) : t("review.banner.many", { n: reviewCount })}
         </div>
       )}
 
@@ -360,7 +363,7 @@ export default function OrderReview() {
           <div className="sticky top-6 rounded-xl border border-border bg-white">
             <div className="flex items-center gap-2 border-b border-border px-4 py-3">
               {isImage ? <ImageIcon size={16} className="text-slate-400" /> : <FileText size={16} className="text-slate-400" />}
-              <span className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">Sorgente originale</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("Sorgente originale")}</span>
               <span className="ml-auto rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{order.source_type}</span>
             </div>
             <pre data-testid="order-source" className="max-h-[540px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-sm leading-relaxed text-slate-700">
@@ -387,11 +390,11 @@ export default function OrderReview() {
             onClick={addItem}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-white py-2.5 text-sm text-muted-foreground transition-colors hover:border-slate-300 hover:text-foreground"
           >
-            <Plus size={16} /> Aggiungi articolo
+            <Plus size={16} /> {t("Aggiungi articolo")}
           </button>
 
           <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
-            <span className="text-sm font-medium">Totale ordine</span>
+            <span className="text-sm font-medium">{t("Totale ordine")}</span>
             <span data-testid="order-total" className="font-display text-xl font-bold tracking-tight">€{total.toFixed(2)}</span>
           </div>
         </div>
@@ -401,11 +404,11 @@ export default function OrderReview() {
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-white/85 backdrop-blur-xl md:left-[240px]">
         <div className="mx-auto flex max-w-[1600px] items-center justify-end gap-2 px-6 py-3 md:px-8">
           <button data-testid="save-order-button" onClick={save} disabled={saving} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary disabled:opacity-60">
-            {saving ? "Salvataggio…" : "Salva"}
+            {saving ? t("Salvataggio…") : t("Salva")}
           </button>
           <div className="relative">
             <button data-testid="export-menu-button" onClick={() => setExportOpen((o) => !o)} className="flex items-center gap-1.5 rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary">
-              <Download size={16} /> Esporta <ChevronDown size={14} />
+              <Download size={16} /> {t("Esporta")} <ChevronDown size={14} />
             </button>
             {exportOpen && (
               <div data-testid="export-menu" className="absolute bottom-full right-0 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-white shadow-lg">
@@ -416,16 +419,16 @@ export default function OrderReview() {
                 ))}
                 <div className="border-t border-border" />
                 <button data-testid="export-email-button" onClick={() => openEmail("confirmation")} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-secondary">
-                  <Mail size={14} className="text-muted-foreground" /> Email conferma (PDF)
+                  <Mail size={14} className="text-muted-foreground" /> {t("Email conferma (PDF)")}
                 </button>
                 <button data-testid="request-clarification-button" onClick={() => openEmail("clarification")} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-secondary">
-                  <MessageSquare size={14} className="text-ai" /> Richiedi chiarimenti
+                  <MessageSquare size={14} className="text-ai" /> {t("Richiedi chiarimenti")}
                 </button>
               </div>
             )}
           </div>
           <button data-testid="validate-order-button" onClick={validate} className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
-            <CheckCircle2 size={16} /> Conferma ordine
+            <CheckCircle2 size={16} /> {t("Conferma ordine")}
           </button>
         </div>
       </div>
@@ -434,12 +437,12 @@ export default function OrderReview() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display tracking-tight flex items-center gap-2">
-              {emailDlg.kind === "clarification" ? <><MessageSquare size={18} className="text-ai" /> Richiedi chiarimenti</> : <><Mail size={18} /> Invia conferma ordine</>}
+              {emailDlg.kind === "clarification" ? <><MessageSquare size={18} className="text-ai" /> {t("Richiedi chiarimenti")}</> : <><Mail size={18} /> {t("Invia conferma ordine")}</>}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Email destinatario</label>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Email destinatario")}</label>
               <input
                 data-testid="email-recipient-input"
                 type="email"
@@ -450,24 +453,24 @@ export default function OrderReview() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">Messaggio (opzionale)</label>
+              <label className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Messaggio (opzionale)")}</label>
               <textarea
                 data-testid="email-message-input"
                 rows={3}
                 value={emailMsg}
                 onChange={(e) => setEmailMsg(e.target.value)}
-                placeholder={emailDlg.kind === "clarification" ? "Può confermare le quantità evidenziate?" : "Grazie per l'ordine!"}
+                placeholder={emailDlg.kind === "clarification" ? t("Può confermare le quantità evidenziate?") : t("Grazie per l'ordine!")}
                 className="mt-1.5 w-full resize-none rounded-lg border border-input bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             {emailDlg.kind === "confirmation" && (
-              <p className="text-xs text-muted-foreground">Verrà allegato il PDF dell'ordine.</p>
+              <p className="text-xs text-muted-foreground">{t("Verrà allegato il PDF dell'ordine.")}</p>
             )}
           </div>
           <DialogFooter>
-            <button onClick={() => setEmailDlg((d) => ({ ...d, open: false }))} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">Annulla</button>
+            <button onClick={() => setEmailDlg((d) => ({ ...d, open: false }))} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">{t("Annulla")}</button>
             <button data-testid="send-email-button" onClick={sendEmail} disabled={sending} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
-              {sending ? "Invio…" : "Invia email"}
+              {sending ? t("Invio…") : t("Invia email")}
             </button>
           </DialogFooter>
         </DialogContent>

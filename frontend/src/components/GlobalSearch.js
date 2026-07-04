@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useI18n } from "@/context/I18nContext";
 import { MagnifyingGlass, Tray, Package, UserCircle, ArrowRight } from "@phosphor-icons/react";
 
 export function GlobalSearch() {
@@ -9,6 +10,7 @@ export function GlobalSearch() {
   const [res, setRes] = useState({ orders: [], products: [], customers: [] });
   const inputRef = useRef(null);
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   useEffect(() => {
     const onKey = (e) => {
@@ -51,7 +53,7 @@ export function GlobalSearch() {
         className="flex w-full items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary"
       >
         <MagnifyingGlass size={16} />
-        <span className="flex-1 text-left">Cerca…</span>
+        <span className="flex-1 text-left">{t("Cerca…")}</span>
         <kbd className="rounded border border-border bg-white px-1.5 py-0.5 text-[10px] font-mono">⌘K</kbd>
       </button>
 
@@ -65,24 +67,24 @@ export function GlobalSearch() {
                 data-testid="global-search-input"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Cerca clienti, ordini, prodotti, SKU…"
+                placeholder={t("Cerca clienti, ordini, prodotti, SKU…")}
                 className="w-full bg-transparent py-4 text-sm outline-none"
               />
               <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">ESC</kbd>
             </div>
             <div className="max-h-[50vh] overflow-y-auto p-2">
-              {!q && <p className="px-3 py-6 text-center text-sm text-muted-foreground">Digita per cercare in tutto Ordia.</p>}
-              {q && !has && <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nessun risultato per "{q}".</p>}
+              {!q && <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("Digita per cercare in tutto Ordia.")}</p>}
+              {q && !has && <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("search.noResults", { q })}</p>}
 
-              {res.customers.length > 0 && <Section title="Clienti" />}
+              {res.customers.length > 0 && <Section title={t("Clienti")} />}
               {res.customers.map((c) => (
-                <Row key={c.name} testid={`search-customer-${c.name}`} icon={UserCircle} title={c.name} sub={`${c.orders} ordini`} onClick={() => go(`/app/customers/${encodeURIComponent(c.name)}`)} />
+                <Row key={c.name} testid={`search-customer-${c.name}`} icon={UserCircle} title={c.name} sub={`${c.orders} ${t("ordini")}`} onClick={() => go(`/app/customers/${encodeURIComponent(c.name)}`)} />
               ))}
-              {res.orders.length > 0 && <Section title="Ordini" />}
+              {res.orders.length > 0 && <Section title={t("Ordini")} />}
               {res.orders.map((o) => (
-                <Row key={o.id} testid={`search-order-${o.id}`} icon={Tray} title={o.customer_name || "Cliente sconosciuto"} sub={`${o.status} · ${o.id.slice(0, 8)}`} onClick={() => go(`/app/orders/${o.id}`)} />
+                <Row key={o.id} testid={`search-order-${o.id}`} icon={Tray} title={o.customer_name || t("Cliente sconosciuto")} sub={`${o.status} · ${o.id.slice(0, 8)}`} onClick={() => go(`/app/orders/${o.id}`)} />
               ))}
-              {res.products.length > 0 && <Section title="Prodotti" />}
+              {res.products.length > 0 && <Section title={t("Prodotti")} />}
               {res.products.map((p) => (
                 <Row key={p.id} testid={`search-product-${p.id}`} icon={Package} title={p.name} sub={`${p.sku} · €${(p.price || 0).toFixed(2)}`} onClick={() => go(`/app/catalog`)} />
               ))}
