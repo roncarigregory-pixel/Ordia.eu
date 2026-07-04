@@ -83,8 +83,8 @@ export default function NewOrder() {
       });
       clearInterval(timer);
       setStage(STAGES.length - 1);
-      await new Promise((r) => setTimeout(r, 550));
-      toast.success(t("Ordine estratto"));
+      await new Promise((r) => setTimeout(r, 400));
+      toast.success(t("Ordine ricevuto — l'AI sta elaborando…"));
       navigate(`/app/orders/${data.id}`);
     } catch (err) {
       clearInterval(timer);

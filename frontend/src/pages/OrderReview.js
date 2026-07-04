@@ -16,7 +16,7 @@ import { ProductSearch } from "@/components/ProductSearch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, CheckCircle2, Trash2, Copy, Plus, Download, AlertTriangle,
+  ArrowLeft, CheckCircle2, Trash2, Copy, Plus, Download, AlertTriangle, Loader2,
   FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -165,6 +165,13 @@ export default function OrderReview() {
 
   useEffect(() => { load().catch(() => toast.error(t("Impossibile caricare l'ordine"))); }, [load, t]);
 
+  // While the AI is still extracting the order (async ingestion), poll until ready.
+  useEffect(() => {
+    if (order?.status !== "processing") return undefined;
+    const iv = setInterval(() => { load().catch(() => {}); }, 2000);
+    return () => clearInterval(iv);
+  }, [order?.status, load]);
+
   const setItems = (fn) => setOrder((prev) => ({ ...prev, line_items: fn(prev.line_items) }));
   const onUpdate = (itemId, patch) => setItems((items) => items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)));
 
@@ -285,6 +292,43 @@ export default function OrderReview() {
   const total = order.line_items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0);
   const reviewCount = order.line_items.filter((i) => i.needs_review).length;
   const isImage = (order.source_type === "file" || order.source_type === "image") && /\[Immagine/i.test(order.source_preview || "");
+
+  if (order.status === "processing") {
+    return (
+      <div className="animate-fade-up">
+        <button data-testid="back-to-orders" onClick={() => navigate("/app/orders")} className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft size={16} /> {t("Ordini")}
+        </button>
+        <div data-testid="order-processing" className="mx-auto mt-20 max-w-md rounded-2xl border border-border bg-white p-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-ai/10">
+            <Loader2 size={26} className="animate-spin text-ai" />
+          </div>
+          <h2 className="mt-5 font-display text-xl font-bold tracking-tight">{t("L'AI sta leggendo l'ordine…")}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t("Sto individuando cliente, prodotti e quantità. Questa pagina si aggiorna da sola in pochi secondi.")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (order.status === "error") {
+    return (
+      <div className="animate-fade-up">
+        <button data-testid="back-to-orders" onClick={() => navigate("/app/orders")} className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft size={16} /> {t("Ordini")}
+        </button>
+        <div data-testid="order-error" className="mx-auto mt-20 max-w-md rounded-2xl border border-red-200 bg-red-50/50 p-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+            <AlertTriangle size={26} className="text-red-500" />
+          </div>
+          <h2 className="mt-5 font-display text-xl font-bold tracking-tight">{t("Elaborazione non riuscita")}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{order.error_message || t("Si è verificato un problema durante l'elaborazione. Riprova.")}</p>
+          <button data-testid="order-error-retry" onClick={() => navigate("/app/new")} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+            {t("Riprova")}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-up pb-24">

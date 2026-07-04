@@ -154,23 +154,20 @@ export default function NotificationCenter() {
                     {n.detail && <p className="mt-1 text-sm text-muted-foreground">{n.detail}</p>}
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       {n.suggested_action && (
-                        <span className="rounded-md bg-ai-soft px-2 py-1 text-xs font-medium text-ai">{t("Consigliato:")} {n.suggested_action}</span>
+                        <span className="rounded-md bg-ai-soft px-2 py-1 text-xs font-medium text-ai">{t("Cosa fare:")} {n.suggested_action}</span>
                       )}
                       {n.order_id && (
-                        <button data-testid={`open-order-${n.id}`} onClick={() => navigate(`/app/orders/${n.order_id}`)} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium hover:bg-secondary">
-                          <ExternalLink size={13} /> {t("Apri ordine")}
+                        <button data-testid={`open-order-${n.id}`} onClick={() => navigate(`/app/orders/${n.order_id}`)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+                          <ExternalLink size={13} /> {t("Apri e sistema")}
                         </button>
                       )}
                       {n.status === "open" && (
                         <>
-                          <button data-testid={`assign-${n.id}`} onClick={() => patch(n.id, { assigned_to: user?.id }, t("Assegnata a te"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium hover:bg-secondary">
-                            <UserCheck size={13} /> {n.assigned_to === user?.id ? t("Tua") : t("Assegna a me")}
+                          <button data-testid={`resolve-${n.id}`} onClick={() => patch(n.id, { status: "resolved" }, t("Segnata come fatta"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
+                            <Check size={13} /> {t("Segna come fatto")}
                           </button>
-                          <button data-testid={`resolve-${n.id}`} onClick={() => patch(n.id, { status: "resolved" }, t("Segnata come risolta"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">
-                            <Check size={13} /> {t("Risolvi")}
-                          </button>
-                          <button data-testid={`archive-${n.id}`} onClick={() => patch(n.id, { status: "archived" }, t("Archiviata"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary">
-                            <Archive size={13} /> {t("Archivia")}
+                          <button data-testid={`archive-${n.id}`} onClick={() => patch(n.id, { status: "archived" }, t("Ignorata"))} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary">
+                            <Archive size={13} /> {t("Ignora")}
                           </button>
                         </>
                       )}

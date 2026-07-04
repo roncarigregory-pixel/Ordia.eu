@@ -276,6 +276,24 @@ const EN = {
   "Controlla e correggi se serve, poi salva. Puoi rimuovere le righe sbagliate.": "Review and fix if needed, then save. You can remove wrong rows.",
   "Unità": "Unit",
 
+  // Async ingestion (EN)
+  "In elaborazione": "Processing",
+  "Errore": "Error",
+  "L'AI sta leggendo l'ordine…": "AI is reading the order…",
+  "Sto individuando cliente, prodotti e quantità. Questa pagina si aggiorna da sola in pochi secondi.": "Identifying customer, products and quantities. This page refreshes on its own in a few seconds.",
+  "Elaborazione non riuscita": "Processing failed",
+  "Si è verificato un problema durante l'elaborazione. Riprova.": "Something went wrong during processing. Please try again.",
+  "Riprova": "Try again",
+  "Ordine ricevuto — l'AI sta elaborando…": "Order received — AI is processing…",
+
+  // Notification actions (EN)
+  "Cosa fare:": "What to do:",
+  "Apri e sistema": "Open & fix",
+  "Segna come fatto": "Mark as done",
+  "Segnata come fatta": "Marked as done",
+  "Ignora": "Dismiss",
+  "Ignorata": "Dismissed",
+
   // Dashboard (static)
   "Centro di Comando": "Command Center",
   "Da revisionare": "To review",

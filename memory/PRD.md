@@ -289,3 +289,11 @@ Problema utente: caricare il catalogo è una frizione; ricerca prodotto poco int
 - i18n: aggiunte chiavi `catalog.aiImported`, `preview.aiFound`, `preview.save` (IT+EN) + traduzioni EN stringhe import.
 - **Errore "cloud" segnalato dall'utente:** non riprodotto; nei log ricorrono `GET /auth/me 401` (token in-memory + cookie di terze parti bloccati nell'iframe del preview) → probabile artefatto SOLO-preview, in produzione (same-origin) il cookie funziona. Da confermare con screenshot utente.
 
+
+## 2026-07-04 (4) — FIX PRODUZIONE: 524 Cloudflare + azioni notifiche
+Segnalati su produzione (ordia.eu).
+- **Errore "cloud" = Cloudflare 524 (origin timeout ~100s)** sulla schermata acquisizione ordini. Causa: `/orders/extract` faceva transcrizione+estrazione AI in modo SINCRONO e il frontend aspettava; se l'AI superava ~100s → 524.
+  FIX = **ingestion asincrona**: l'endpoint prepara la sorgente (fast), crea subito l'ordine `status="processing"` e ritorna <1s; l'AI (Whisper+Claude) gira in background via `asyncio.create_task(_ingest_bg(...))` che aggiorna l'ordine (o `status="error"` con messaggio su fallimento). `ingest_order` ora accetta `order_id` (replace in-place) + `audio_content` (transcrizione spostata in background). OrderReview fa **polling ogni 2s** su `status==processing` e mostra schermate "in elaborazione"/"errore". NewOrder naviga subito. StatusBadge: aggiunti stati `processing`/`error`. Verificato E2E (curl + UI: processing→ready in ~8s).
+- **Azioni notifiche confuse** ("Assegna a me / Risolvi / Archivia"): riscritte → primaria **"Apri e sistema"** (bg primary) + "Segna come fatto" + "Ignora". Rimosso "Assegna a me" (feature da team, confondeva utenti singoli). Copy "Consigliato:"→"Cosa fare:". IT+EN.
+- ⚠️ Sono fix di CODICE: richiedono REDEPLOY per arrivare su ordia.eu.
+

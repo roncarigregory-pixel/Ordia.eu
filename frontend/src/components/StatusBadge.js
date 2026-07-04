@@ -2,10 +2,12 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "@/context/I18nContext";
 
 const STATUS = {
+  processing: { label: "In elaborazione", cls: "text-ai bg-ai/10 border-ai/20" },
   needs_review: { label: "Da Revisionare", cls: "text-amber-700 bg-amber-50 border-amber-200" },
   ready: { label: "Pronto", cls: "text-blue-700 bg-blue-50 border-blue-200" },
   validated: { label: "Validato", cls: "text-emerald-700 bg-emerald-50 border-emerald-200" },
   exported: { label: "Esportato", cls: "text-slate-600 bg-slate-100 border-slate-200" },
+  error: { label: "Errore", cls: "text-red-700 bg-red-50 border-red-200" },
 };
 
 export function StatusBadge({ status, className }) {

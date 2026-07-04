@@ -694,16 +694,27 @@ async def get_automations(company_id: str) -> dict:
 async def ingest_order(company_id: str, source_type: str, source_preview: str,
                        source_text: Optional[str] = None, image_b64: Optional[str] = None,
                        created_by: str = "system", external_id: Optional[str] = None,
-                       source_meta: Optional[dict] = None) -> Optional[dict]:
+                       source_meta: Optional[dict] = None,
+                       order_id: Optional[str] = None,
+                       audio_content: Optional[bytes] = None, audio_fname: Optional[str] = None) -> Optional[dict]:
     """Single entry point for the whole order pipeline used by every channel
     (manual upload, email, WhatsApp, future plugins):
     Input -> AI extraction -> Catalog match -> Learning loop -> draft order.
+    If order_id is given, an existing 'processing' order is UPDATED in place
+    (used by the async ingestion path) instead of inserting a new one.
     Returns the created order, or None if it was a duplicate (idempotent by external_id)."""
     if external_id:
         dup = await db.orders.find_one({"company_id": company_id, "external_id": external_id}, {"_id": 0})
         if dup:
             logger.info("Skipping duplicate order external_id=%s", external_id)
             return None
+    # Slow speech-to-text runs here (background), never blocking the HTTP request.
+    if audio_content is not None:
+        transcript = await transcribe_audio(audio_content, audio_fname or "audio.mp3")
+        if not transcript.strip():
+            raise HTTPException(status_code=400, detail="Impossibile trascrivere l'audio. Riprova con un file più chiaro.")
+        source_text = transcript
+        source_preview = f"[Messaggio vocale trascritto]\n{transcript}"
     products = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(2000)
     learned = await get_learned_aliases(company_id)
     extracted = await run_extraction(source_text, image_b64, products, learned)
@@ -738,7 +749,7 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
         assigned_to = autom["routing_user_id"]
         history.append(history_entry("Assegnato automaticamente", "automation"))
     order = {
-        "id": str(uuid.uuid4()), "company_id": company_id, "created_by": created_by,
+        "id": order_id or str(uuid.uuid4()), "company_id": company_id, "created_by": created_by,
         "source_type": source_type, "source_preview": (source_preview or "")[:5000],
         "external_id": external_id, "source_meta": source_meta or {},
         "customer_name": extracted["customer_name"], "delivery_date": extracted["delivery_date"],
@@ -750,7 +761,14 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
         "created_at": now_iso(), "updated_at": now_iso(),
         "history": history,
     }
-    await db.orders.insert_one(dict(order))
+    if order_id:
+        existing = await db.orders.find_one({"id": order_id, "company_id": company_id}, {"_id": 0, "created_at": 1, "history": 1})
+        if existing:
+            order["created_at"] = existing.get("created_at", order["created_at"])
+            order["history"] = (existing.get("history") or []) + history
+        await db.orders.replace_one({"id": order_id, "company_id": company_id}, dict(order))
+    else:
+        await db.orders.insert_one(dict(order))
     order.pop("_id", None)
     if auto_confirmed:
         await learn_from_order(company_id, order)
@@ -761,6 +779,18 @@ async def ingest_order(company_id: str, source_type: str, source_preview: str,
     logger.info("Ingested order %s via %s (%d items, %d need review, auto_confirmed=%s)",
                 order["id"], source_type, len(items), review_count, auto_confirmed)
     return order
+
+async def _ingest_bg(order_id: str, company_id: str, **kwargs):
+    """Background finalizer: runs the slow AI work and updates the processing order.
+    Guarantees the order never stays stuck — on failure it is marked 'error'."""
+    try:
+        await ingest_order(company_id, order_id=order_id, **kwargs)
+    except HTTPException as he:
+        await db.orders.update_one({"id": order_id}, {"$set": {"status": "error", "error_message": str(he.detail)[:300], "updated_at": now_iso()}})
+    except Exception as e:
+        logger.error("Async ingestion failed for %s: %s", order_id, e)
+        await db.orders.update_one({"id": order_id}, {"$set": {"status": "error", "error_message": "Elaborazione AI non riuscita. Riprova.", "updated_at": now_iso()}})
+
 
 @api.post("/orders/extract")
 async def extract_order(
@@ -773,8 +803,13 @@ async def extract_order(
 
     source_text = None
     image_b64 = None
+    audio_content = None
+    audio_fname = None
     source_preview = ""
 
+    # Fast source preparation only. Slow AI work (speech-to-text + extraction)
+    # is deferred to a background task so the HTTP request returns immediately
+    # and never hits the Cloudflare/origin 100s timeout (524).
     if source_type == "text":
         if not text:
             raise HTTPException(status_code=400, detail="No text provided")
@@ -793,25 +828,40 @@ async def extract_order(
             source_text = _extract_pdf_text(content)
             source_preview = source_text or "(scanned PDF — no embedded text)"
             if not source_text.strip():
-                raise HTTPException(status_code=400, detail="Could not read text from this PDF. Try an image instead.")
+                raise HTTPException(status_code=400, detail="Non riesco a leggere il testo da questo PDF. Prova a caricarlo come immagine.")
         elif fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
             image_b64 = base64.b64encode(content).decode("utf-8")
             source_preview = f"[Immagine: {file.filename}]"
         elif fname.endswith(AUDIO_EXTS):
-            transcript = await transcribe_audio(content, fname)
-            if not transcript.strip():
-                raise HTTPException(status_code=400, detail="Impossibile trascrivere l'audio. Riprova con un file più chiaro.")
-            source_text = transcript
-            source_preview = f"[Messaggio vocale trascritto]\n{transcript}"
+            audio_content = content
+            audio_fname = fname
+            source_preview = "[Messaggio vocale — trascrizione in corso…]"
         else:
-            raise HTTPException(status_code=400, detail="Unsupported file type")
+            raise HTTPException(status_code=400, detail="Tipo di file non supportato")
     else:
         raise HTTPException(status_code=400, detail="Invalid source_type")
 
-    order = await ingest_order(
-        user["company_id"], source_type, source_preview,
-        source_text=source_text, image_b64=image_b64, created_by=user["id"])
-    return order
+    # Create the order immediately in 'processing' state and return fast.
+    processing = {
+        "id": str(uuid.uuid4()), "company_id": user["company_id"], "created_by": user["id"],
+        "source_type": source_type, "source_preview": (source_preview or "")[:5000],
+        "external_id": None, "source_meta": {},
+        "customer_name": None, "delivery_date": None, "notes": None, "line_items": [],
+        "status": "processing", "auto_confirmed": False, "assigned_to": None,
+        "min_confidence": 0, "created_at": now_iso(), "updated_at": now_iso(),
+        "history": [history_entry("Ricezione ordine", user["id"], f"Fonte: {source_type}")],
+    }
+    await db.orders.insert_one(dict(processing))
+    processing.pop("_id", None)
+
+    asyncio.create_task(_ingest_bg(
+        processing["id"], user["company_id"],
+        source_type=source_type, source_preview=source_preview,
+        source_text=source_text, image_b64=image_b64,
+        audio_content=audio_content, audio_fname=audio_fname,
+        created_by=user["id"],
+    ))
+    return processing
 
 @api.get("/orders")
 async def list_orders(
