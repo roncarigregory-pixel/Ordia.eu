@@ -204,7 +204,11 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 - **Frontend** `Customers.js`: pulsante "Importa clienti" (data-testid `import-customers-button`) + input file, toast con esito, hint colonne. Clienti importati appaiono in lista con "Abituali: …" e hanno il pulsante Riordina in dettaglio.
 - **Verificato E2E** (curl + UI): import 2 clienti (4 prodotti abbinati, 2 righe non abbinate segnalate) → clienti in lista → riordino da profilo (0 ordini) crea ordine con i prodotti abituali. Dati di test ripuliti.
 
-## ✅ Video tutorial NARRATO v3 — con Import + Riordino (2026-07-04)
+## ✅ Video v4 (voce IT nativa) + Modello CSV + Badge "Da riordinare" (2026-07-04)
+- **Voce TTS italiana nativa**: sostituito OpenAI (accento inglese) con **edge-tts** (Microsoft Neural, `it-IT-IsabellaNeural`, rate +7%) — server-side, keyless, nessuna installazione lato utente. Narrazione riscritta più dinamica/entusiasta.
+- **Video v4** (`ordia-tutorial-16x9.mp4` ~88s, `9x16.mp4` ~89s): **intro** con schermata bianca + logo Ordia + "Dal cliente al gestionale, con un click"; scene con cursore/anello luminoso (canali → estrazione → revisione con nome cliente + riga incerta → Approva → Import → Riordino); **outro** slogan "Ordia. Meno ordini da gestire, più tempo per vendere." Voce + musichetta soft. Sync corretta con **scala lineare** (webm_dur/durata_script, ~1.05) per compensare la deriva di Playwright. Pre-auth via cookie (niente pagina di login nel video). Script in `/tmp` (effimeri).
+- **Modello CSV scaricabile**: pulsante "Scarica il modello CSV" in pagina Clienti (genera `modello-clienti-ordia.csv` lato client, formato cliente/prodotto/quantità).
+- **Badge "Da riordinare"**: backend calcola `days_since_last_order` + `needs_reorder` (soglia `REORDER_ALERT_DAYS`=14, da env). Clienti fermi da >14gg o solo-profilo (0 ordini) → badge ambra sulla card + avviso in cima ("N clienti non ordinano da un po'"). Verificato E2E (21gg→badge, 3gg→no, profilo→badge).
 - Rigenerati `ordia-tutorial-16x9.mp4` e `9x16.mp4` (~80s) con 11 scene: canali → estrazione → revisione (nome cliente + riga incerta) → Approva → **Import clienti** → **Riordino 1-click** → outro. Voce coral (OpenAI TTS) + musichetta + cursore/anello luminoso. Script rigenerabili in `/tmp` (nota: /tmp e i pacchetti di sistema ffmpeg/chromium sono EFFIMERI tra i restart del pod; i .mp4 in /app/frontend/public PERSISTONO).
 
 

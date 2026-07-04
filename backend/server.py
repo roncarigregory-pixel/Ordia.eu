@@ -1058,6 +1058,22 @@ async def global_search(q: str = "", user: dict = Depends(get_current_user)):
     c_hits = [c for c in customers if ql in c["name"].lower()][:6]
     return {"orders": o_hits, "products": p_hits, "customers": c_hits}
 
+REORDER_ALERT_DAYS = int(os.environ.get("REORDER_ALERT_DAYS", "14"))
+
+def _reorder_status(last_order, has_profile: bool):
+    """Return (days_since_last_order, needs_reorder). Profile-only customers
+    (habitual products but no order yet) are always reorder candidates."""
+    if not last_order:
+        return (None, bool(has_profile))
+    try:
+        dt = datetime.fromisoformat(str(last_order).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        days = (datetime.now(timezone.utc) - dt).days
+    except (ValueError, TypeError):
+        return (None, False)
+    return (days, days >= REORDER_ALERT_DAYS)
+
 def _match_catalog_product(query: str, by_sku: dict, prods: List[dict]):
     """Match an imported product string to a catalog product: SKU, exact name, then contains."""
     key = (query or "").strip()
@@ -1093,6 +1109,10 @@ async def list_customers(user: dict = Depends(get_current_user)):
             result.append({"name": nm, "orders": 0, "volume": 0.0, "last_order": None,
                            "favorite_products": fav, "has_profile": True})
     result.sort(key=lambda x: (x.get("last_order") or "", x["name"]), reverse=True)
+    for c in result:
+        days, needs = _reorder_status(c.get("last_order"), c.get("has_profile"))
+        c["days_since_last_order"] = days
+        c["needs_reorder"] = needs
     return result
 
 @api.get("/customers/{name}")
@@ -1114,6 +1134,11 @@ async def customer_detail(name: str, user: dict = Depends(get_current_user)):
             agg["favorite_products"] = [x.get("name") for x in profile.get("products", []) if x.get("name")][:3]
 
     insights = []
+    days, needs = _reorder_status(agg.get("last_order"), agg.get("has_profile"))
+    agg["days_since_last_order"] = days
+    agg["needs_reorder"] = needs
+    if needs and days is not None:
+        insights.append(f"⚠️ Non ordina da {days} giorni: è il momento di proporre un riordino.")
     if agg["orders"] >= 2:
         insights.append(f"Cliente ricorrente con {agg['orders']} ordini per €{agg['volume']:.2f} totali.")
     if profile and agg["orders"] == 0:

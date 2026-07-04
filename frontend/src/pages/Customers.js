@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Users, ArrowUpRight, Upload, Loader2 } from "lucide-react";
+import { Search, Users, ArrowUpRight, Upload, Loader2, RefreshCw, Download } from "lucide-react";
 
 export default function Customers() {
   const [customers, setCustomers] = useState(null);
@@ -16,6 +16,20 @@ export default function Customers() {
     api.get("/customers").then(({ data }) => setCustomers(data)).catch(() => setCustomers([]));
 
   useEffect(() => { loadCustomers(); }, []);
+
+  const downloadModel = () => {
+    const csv = "cliente,prodotto,quantità\n" +
+      "Trattoria Sole,Mozzarella Block,8\n" +
+      "Trattoria Sole,Chopped Tomatoes Tin,5\n" +
+      "Trattoria Sole,Extra Virgin Olive Oil,1\n" +
+      "Pizzeria Roma,All-Purpose Flour,3\n" +
+      "Pizzeria Roma,Mozzarella Block,10\n";
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "modello-clienti-ordia.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -66,9 +80,25 @@ export default function Customers() {
             {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
             {importing ? "Importazione…" : "Importa clienti"}
           </button>
-          <p className="mt-1.5 text-right text-xs text-muted-foreground">CSV/Excel · colonne: cliente, prodotto, quantità</p>
+          <button
+            data-testid="download-template-button"
+            onClick={downloadModel}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <Download size={13} /> Scarica il modello CSV
+          </button>
+          <p className="mt-1 text-right text-xs text-muted-foreground">CSV/Excel · colonne: cliente, prodotto, quantità</p>
         </div>
       </div>
+
+      {customers && customers.filter((c) => c.needs_reorder).length > 0 && (
+        <div data-testid="reorder-alert" className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <RefreshCw size={16} className="shrink-0" />
+          <span>
+            <span className="font-semibold">{customers.filter((c) => c.needs_reorder).length} clienti</span> non ordinano da un po'. Aprili e proponi un <span className="font-semibold">riordino con un click</span>.
+          </span>
+        </div>
+      )}
 
       <div className="relative max-w-xs mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -103,7 +133,14 @@ export default function Customers() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                   {c.name.slice(0, 2).toUpperCase()}
                 </div>
-                <ArrowUpRight size={16} className="text-slate-300 transition-colors group-hover:text-primary" />
+                {c.needs_reorder ? (
+                  <span data-testid={`reorder-badge-${c.name}`} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                    <RefreshCw size={11} />
+                    {c.days_since_last_order != null ? `Da riordinare · ${c.days_since_last_order}gg` : "Da riordinare"}
+                  </span>
+                ) : (
+                  <ArrowUpRight size={16} className="text-slate-300 transition-colors group-hover:text-primary" />
+                )}
               </div>
               <p className="mt-3 truncate font-semibold">{c.name}</p>
               <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
