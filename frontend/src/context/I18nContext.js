@@ -7,7 +7,7 @@ const STORAGE_KEY = "ordia.lang";
 const UI = {
   it: {
     "nav.login": "Accedi",
-    "nav.demo": "Prova la demo",
+    "nav.demo": "Inizia ora",
     "nav.product": "Prodotto",
     "nav.how": "Come funziona",
     "nav.benefits": "Vantaggi",
@@ -15,10 +15,10 @@ const UI = {
     "hero.badge": "Automazione ordini con AI",
     "hero.title": "Basta ridigitare gli ordini a mano.",
     "hero.sub": "Ordia trasforma ogni ordine — WhatsApp, email, PDF, foto — in un ordine pronto per il tuo gestionale. In automatico.",
-    "hero.cta": "Prova la demo live",
+    "hero.cta": "Inizia gratis",
     "hero.cta.loading": "Apertura demo…",
     "hero.watch": "Guarda il video (90s)",
-    "hero.trust": "Nessuna carta di credito · Demo pronta in 3 secondi",
+    "hero.trust": "Nessuna carta di credito · Configurazione in 2 minuti",
     "hero.stat1": "ore risparmiate a settimana",
     "hero.stat2": "meno errori di digitazione",
     "hero.stat3": "canali gestiti da un solo posto",
@@ -48,8 +48,8 @@ const UI = {
     "chan.xls": "Excel", "chan.photo": "Foto", "chan.voice": "Voce",
 
     "cta.title": "Pronto a dire addio alla digitazione manuale?",
-    "cta.sub": "Prova Ordia con dati reali di un ingrosso alimentare. Bastano pochi secondi.",
-    "cta.button": "Prova la demo live",
+    "cta.sub": "Crea il tuo spazio di lavoro e collega i tuoi ordini. Bastano pochi minuti.",
+    "cta.button": "Crea il tuo account",
 
     "foot.tag": "Dagli ordini caotici agli ordini pronti.",
     "video.title": "Ordia in 90 secondi",
@@ -113,7 +113,7 @@ const UI = {
   },
   en: {
     "nav.login": "Log in",
-    "nav.demo": "Try the demo",
+    "nav.demo": "Get started",
     "nav.product": "Product",
     "nav.how": "How it works",
     "nav.benefits": "Benefits",
@@ -121,10 +121,10 @@ const UI = {
     "hero.badge": "AI order automation",
     "hero.title": "Stop retyping orders by hand.",
     "hero.sub": "Ordia turns every order — WhatsApp, email, PDF, photo — into a clean order ready for your ERP. Automatically.",
-    "hero.cta": "Try the live demo",
-    "hero.cta.loading": "Opening demo…",
+    "hero.cta": "Start free",
+    "hero.cta.loading": "Opening…",
     "hero.watch": "Watch the video (90s)",
-    "hero.trust": "No credit card · Live demo in 3 seconds",
+    "hero.trust": "No credit card · Set up in 2 minutes",
     "hero.stat1": "hours saved per week",
     "hero.stat2": "fewer typing errors",
     "hero.stat3": "channels handled in one place",
@@ -154,8 +154,8 @@ const UI = {
     "chan.xls": "Excel", "chan.photo": "Photo", "chan.voice": "Voice",
 
     "cta.title": "Ready to say goodbye to manual data entry?",
-    "cta.sub": "Try Ordia with real data from a food wholesaler. It only takes seconds.",
-    "cta.button": "Try the live demo",
+    "cta.sub": "Create your workspace and connect your orders. It only takes minutes.",
+    "cta.button": "Create your account",
 
     "foot.tag": "From chaotic orders to order-ready.",
     "video.title": "Ordia in 90 seconds",

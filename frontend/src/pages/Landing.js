@@ -1,8 +1,5 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
-import { useAuth } from "@/context/AuthContext";
 import { useI18n, LanguageToggle } from "@/context/I18nContext";
 import {
   Sparkles, ArrowRight, PlayCircle, Clock, ShieldCheck, Inbox, Plug, Zap,
@@ -14,20 +11,9 @@ const fade = (d = 0) => ({ initial: { opacity: 0, y: 16 }, whileInView: { opacit
 
 export default function Landing() {
   const { t } = useI18n();
-  const { login } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
 
-  const tryDemo = async () => {
-    setLoading(true);
-    try {
-      await login("demo@ordia.app", "demo123");
-      navigate("/app");
-    } catch {
-      toast.error("Demo unavailable — please try again.");
-      setLoading(false);
-    }
-  };
+  const goToRegister = () => navigate("/register");
 
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 
@@ -64,7 +50,7 @@ export default function Landing() {
           <div className="flex items-center gap-2.5">
             <LanguageToggle />
             <button onClick={() => navigate("/login")} data-testid="landing-login" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-secondary sm:block">{t("nav.login")}</button>
-            <button onClick={tryDemo} disabled={loading} data-testid="landing-nav-demo" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform hover:scale-[1.03] disabled:opacity-60">{t("nav.demo")}</button>
+            <button onClick={goToRegister} data-testid="landing-nav-register" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform hover:scale-[1.03]">{t("nav.demo")}</button>
           </div>
         </div>
       </header>
@@ -89,8 +75,8 @@ export default function Landing() {
               </div>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <button onClick={tryDemo} disabled={loading} data-testid="landing-hero-demo" className="group inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:scale-[1.03] disabled:opacity-60">
-                {loading ? t("hero.cta.loading") : t("hero.cta")}
+              <button onClick={goToRegister} data-testid="landing-hero-register" className="group inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:scale-[1.03]">
+                {t("hero.cta")}
                 <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
               </button>
               <button onClick={() => scrollTo("video")} data-testid="landing-hero-watch" className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-secondary">
@@ -232,8 +218,8 @@ export default function Landing() {
         <motion.div {...fade()} className="mx-auto max-w-5xl overflow-hidden rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground">
           <h2 className="mx-auto max-w-2xl font-display text-3xl font-bold tracking-tight sm:text-4xl">{t("cta.title")}</h2>
           <p className="mx-auto mt-3 max-w-xl text-primary-foreground/80">{t("cta.sub")}</p>
-          <button onClick={tryDemo} disabled={loading} data-testid="landing-cta-demo" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3.5 text-sm font-bold text-primary transition-transform hover:scale-[1.04] disabled:opacity-60">
-            {loading ? t("hero.cta.loading") : t("cta.button")} <ArrowRight size={17} />
+          <button onClick={goToRegister} data-testid="landing-cta-register" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3.5 text-sm font-bold text-primary transition-transform hover:scale-[1.04]">
+            {t("cta.button")} <ArrowRight size={17} />
           </button>
           <div className="mt-6 flex items-center justify-center gap-2 text-xs text-primary-foreground/70">
             <CheckCircle2 size={14} /> {t("hero.trust")}

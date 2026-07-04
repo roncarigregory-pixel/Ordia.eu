@@ -49,9 +49,9 @@ function Protected({ children }) {
 }
 
 function PublicOnly({ children }) {
-  const { user, ready, pilotMode } = useAuth();
-  // Public pages render immediately; redirect only once we KNOW a prod user is logged in.
-  if (ready && user && !pilotMode) return <Navigate to="/app" replace />;
+  const { user, ready } = useAuth();
+  // Public pages render immediately; redirect only once we KNOW a user is logged in.
+  if (ready && user) return <Navigate to="/app" replace />;
   return children;
 }
 

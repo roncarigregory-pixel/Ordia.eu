@@ -6,6 +6,8 @@ deps, helpers, notification/email) are injected through ctx, so this module has 
 import dependency on server.py. Behavior is identical to the previous inline code.
 """
 import os
+import io
+import zipfile
 import uuid
 import json
 import secrets
@@ -14,7 +16,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -205,6 +207,30 @@ def setup_bridge(api, ctx):
     async def list_bridge_agents(user: dict = Depends(get_current_user)):
         agents = await db.bridge_agents.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
         return [_agent_public(a) for a in agents]
+
+    @api.get("/bridge/agent/download")
+    async def download_bridge_agent(user: dict = Depends(get_current_user)):
+        """Stream the on-prem Bridge agent as a ready-to-run .zip bundle."""
+        agent_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bridge_agent")
+        agent_dir = os.path.abspath(agent_dir)
+        skip_dirs = {"__pycache__", "rpa_shots", "delivered", "data"}
+        skip_files = {".agent_state.json"}
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(agent_dir):
+                dirs[:] = [d for d in dirs if d not in skip_dirs]
+                for f in files:
+                    if f in skip_files or f.endswith(".pyc"):
+                        continue
+                    full = os.path.join(root, f)
+                    arc = os.path.join("ordia-bridge", os.path.relpath(full, agent_dir))
+                    zf.write(full, arc)
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="ordia-bridge.zip"'},
+        )
 
     @api.put("/bridge/agents/{agent_id}")
     async def update_bridge_agent(agent_id: str, body: AgentUpdate, user: dict = Depends(get_current_user)):

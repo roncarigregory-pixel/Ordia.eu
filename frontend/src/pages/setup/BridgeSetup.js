@@ -74,6 +74,25 @@ function ProcedurePreview({ spec }) {
 }
 const KIND_LABEL = { desktop_uia: "Desktop", web_dom: "Web", file_import: "File", api: "API" };
 
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
+
+async function downloadBridge() {
+  try {
+    const { data } = await api.get("/bridge/agent/download", { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([data], { type: "application/zip" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ordia-bridge.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    toast.success("Download del Bridge avviato");
+  } catch (e) {
+    toast.error(formatApiError(e));
+  }
+}
+
 function ReadinessPanel({ readiness }) {
   const { t } = useI18n();
   if (!readiness) return null;
@@ -155,13 +174,42 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
         </button>
       </div>
       {!agent.paired && agent.pairing_code && (
-        <div className="mt-3 rounded-md bg-secondary p-3">
-          <p className="text-xs text-muted-foreground mb-1">{t("Codice di accoppiamento (inseriscilo nell'agente Bridge):")}</p>
-          <div className="flex items-center gap-2">
-            <span data-testid={`bridge-pairing-code-${agent.id}`} className="font-mono text-2xl font-bold tracking-[0.3em]">{agent.pairing_code}</span>
-            <button onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }} className="text-slate-400 hover:text-foreground">
-              <Copy size={16} />
+        <div className="mt-3 space-y-3">
+          <div className="rounded-md bg-secondary p-3">
+            <p className="text-xs font-semibold text-foreground mb-1">{t("Passo 1 · Scarica il Bridge")}</p>
+            <p className="text-xs text-muted-foreground mb-2">{t("Installalo su un dispositivo sempre acceso vicino al gestionale (mini-PC, NAS o il PC dell'ufficio ordini).")}</p>
+            <button data-testid={`bridge-download-${agent.id}`} onClick={downloadBridge}
+              className="inline-flex items-center gap-2 rounded-md bg-foreground px-3 py-2 text-xs font-semibold text-background hover:opacity-90">
+              <UploadSimple size={15} className="rotate-180" /> {t("Scarica Bridge (.zip)")}
             </button>
+          </div>
+
+          <div className="rounded-md bg-secondary p-3">
+            <p className="text-xs font-semibold text-foreground mb-1">{t("Passo 2 · Avvia con un comando")}</p>
+            <p className="text-xs text-muted-foreground mb-2">{t("Nella cartella scaricata, esegui (Docker). Il codice è già incluso — nessuna porta da aprire, nessun IT.")}</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 overflow-x-auto rounded border border-border bg-white px-3 py-2 text-[11px] font-mono whitespace-nowrap">
+                ORDIA_BACKEND={BACKEND} ORDIA_PAIR_CODE={agent.pairing_code} docker compose up -d
+              </code>
+              <button data-testid={`bridge-copy-cmd-${agent.id}`}
+                onClick={() => { navigator.clipboard?.writeText(`ORDIA_BACKEND=${BACKEND} ORDIA_PAIR_CODE=${agent.pairing_code} docker compose up -d`); toast.success(t("Comando copiato")); }}
+                className="shrink-0 rounded-md border border-input bg-white p-2 hover:bg-secondary"><Copy size={15} /></button>
+            </div>
+          </div>
+
+          <div className="rounded-md bg-secondary p-3">
+            <p className="text-xs font-semibold text-foreground mb-1">{t("Codice di accoppiamento")}</p>
+            <div className="flex items-center gap-2">
+              <span data-testid={`bridge-pairing-code-${agent.id}`} className="font-mono text-2xl font-bold tracking-[0.3em]">{agent.pairing_code}</span>
+              <button onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }} className="text-slate-400 hover:text-foreground">
+                <Copy size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div data-testid={`bridge-waiting-${agent.id}`} className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-xs text-amber-700">{t("In attesa del collegamento del Bridge… questa scheda si aggiorna da sola appena l'agente si connette.")}</span>
           </div>
         </div>
       )}

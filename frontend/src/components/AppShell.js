@@ -20,7 +20,7 @@ const NAV = [
 ];
 
 export function AppShell({ children }) {
-  const { user, logout, pilotMode } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [notifCount, setNotifCount] = useState(0);
@@ -41,11 +41,6 @@ export function AppShell({ children }) {
         <div className="flex items-center gap-2 px-5 h-16 border-b border-border">
           <img src={LOGO} alt="Ordia" className="h-7 w-7 rounded-md object-contain" />
           <span className="font-display font-bold text-lg tracking-[0.18em]">ORDIA</span>
-          {pilotMode && (
-            <span data-testid="pilot-badge" className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-              {t("Demo")}
-            </span>
-          )}
         </div>
 
         <div className="px-3 pt-4 space-y-3">
@@ -89,7 +84,7 @@ export function AppShell({ children }) {
               <p className="text-sm font-medium truncate">{user?.name}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
-            <button data-testid="logout-button" onClick={logout} className="text-muted-foreground hover:text-foreground transition-colors" title={pilotMode ? t("Esci dalla demo") : t("Esci")}>
+            <button data-testid="logout-button" onClick={logout} className="text-muted-foreground hover:text-foreground transition-colors" title={t("Esci")}>
               <LogOut size={17} />
             </button>
           </div>

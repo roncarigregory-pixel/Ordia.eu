@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 16 — Production release hardening pass. Full backend + frontend validation of (a) de-demo-ification, (b) real auth (no demo auto-login), (c) Bridge install UX (download button, pre-filled docker command with pairing code + backend URL, waiting status), (d) core flows (register → seeded catalog, login, new order via text with AI extraction, orders list). Backend pytest suite (test_iter16_production.py): 11/11 passed. Frontend Playwright validation covered Landing, Register, Login, protected routes, sidebar, Bridge install UX, and 9 in-app routes. All P0 acceptance criteria are met.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Onboarding welcome dialog (AppShell)",
+        "issue": "The Radix <Dialog role='dialog'> shown on first login intercepts pointer events across the whole viewport (it's a fixed z-50 overlay), so real users clicking the sidebar logout button (or any sidebar/nav item) while the welcome modal is open will get their click swallowed and nothing will happen. Pressing Escape or clicking a button INSIDE the modal dismisses it and then logout works. Recommend: (1) ensure the modal is dismissible with a visible X/Skip button, (2) OR make the overlay non-modal (allow interaction with sidebar), (3) OR auto-focus a close button.",
+        "selector": "[role='dialog'] over [data-testid='logout-button']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Bridge setup — 'waiting for connection' pill",
+        "issue": "The amber 'In attesa del collegamento del Bridge…' text is still hardcoded Italian even when the UI is in English. Same pattern known from iter 14/15 for other IT strings on Bridge — most are fixed now but this one leaked. Wrap in t('...').",
+        "selector": "[data-testid^='bridge-waiting-']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter16_production.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [
+    "MAIN AGENT: Make the onboarding welcome dialog dismissible without blocking global clicks. Either (a) render it as a non-modal popover, or (b) guarantee a visible Close/Skip button that a first-time user sees immediately. Current UX means a brand-new user cannot click Logout (or anything in the shell) until they figure out that Escape closes the modal.",
+    "MAIN AGENT (LOW): Translate the amber 'In attesa del collegamento del Bridge…' waiting-status string in BridgeSetup.js AgentCard (it's still hardcoded Italian in EN mode)."
+  ],
+  "critical_code_review_comments": [
+    "Auth model is solid: JWT via Authorization header + HttpOnly cookie fallback (backend/server.py get_current_user). No demo backdoor found in server.py or bridge.py. /auth/me correctly 401s when unauthenticated.",
+    "Bridge download endpoint (GET /api/bridge/agent/download) correctly streams a zip built from /app/bridge_agent, requires auth, and includes agent.py + Dockerfile under the ordia-bridge/ root. Response size ~kilobytes with proper Content-Type: application/zip and Content-Disposition attachment header.",
+    "Frontend AuthContext.logout() only sets local state (setUser(false)) and relies on <Protected> to redirect. This works, but there's no explicit navigate('/login'), so a stale <Navigate replace> re-render is what causes the redirect. Under React 18 concurrent rendering this pattern is fine, but if any future <Protected> guard is added that doesn't unmount on user=false, logout will silently succeed without moving the URL. Consider adding an explicit navigate('/login') in logout() for defensive UX.",
+    "The Onboarding welcome dialog is z-50 and fixed inset-0 — this is why it eats clicks on the sidebar. This is a shadcn/Radix dialog. Either mount it as a controlled but non-modal panel, or ensure `onOpenAutoFocus` / close button is discoverable. This bit us in the automated logout test and will bite first-time users too.",
+    "Register.js still uses `t('tu@azienda.com')` as the email placeholder KEY — I verified it now resolves to 'you@company.com' in EN mode (previously flagged in iter 14 as untranslated). Good — that fix landed.",
+    "Order text ingestion uses multipart form (POST /orders/extract with source_type=text) — not JSON. This is inconsistent with the rest of the JSON API. Not a bug, just an API-shape smell."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter16_production.py (NEW — 11 tests covering auth, no-auto-login, bridge create/download/delete, order text-import+edit)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 in test_iter16_production.py)",
+    "frontend": "~95% — all P0 flows verified. Only minor onboarding-modal UX click-blocker and 1 leftover Italian string in Bridge waiting pill."
+  },
+  "test_credentials": "demo@ordia.app / demo123 (existing account). Registration path used qa+<epoch>@ordia.app / Password123 to create fresh companies with seeded catalog.",
+  "seed_data_creation": "Backend tests create ephemeral qa+<ts>@ordia.app companies (TEST_Wholesale_<ts>) and one throw-away bridge agent (TEST_QA_Agent), deleted after the run. Frontend Playwright created and deleted one bridge agent for demo@ordia.app.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 16 = production-release acceptance for de-demo + Bridge install UX. Backend baseline is clean. Frontend baseline is clean except: (1) the 'Welcome to Ordia' onboarding modal (Radix dialog role='dialog', z-50 fixed inset-0) intercepts pointer events on the whole page — dismiss it with Escape or a modal-internal button before automating sidebar clicks (this affected our first logout test); (2) one Italian string still leaks in Bridge waiting pill. For login/logout automation always: Escape after login-post-redirect, then click. Testids verified this iter: landing-{nav,hero,cta}-register, landing-login, login-{email,password}-input, login-submit-button, register-{company_name,name,email,password}-input, register-submit-button, logout-button, bridge-create-agent, bridge-download-<id>, bridge-copy-cmd-<id>, bridge-pairing-code-<id>, bridge-waiting-<id>, bridge-agent-delete-<id>.",
+  "rca of the issue": "Onboarding modal click-swallowing: the OnboardingProvider mounts a Radix <Dialog> at first login. The Radix DialogOverlay is by design fixed inset-0 with pointer-events auto. Playwright .click() with force=True still gets intercepted because Playwright routes through elementsFromPoint(). Fix path: either (a) let the sidebar be inside a Portal higher in z-index than the dialog overlay, (b) render the welcome as a <Popover> or dismissible side panel instead of a modal, or (c) at minimum ensure a large discoverable Skip button in the modal so a first-time user knows how to move on. Confirmed via JS-click bypass that once dismissed, everything works and logout redirects to /login as expected."
+}
