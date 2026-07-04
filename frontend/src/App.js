@@ -2,7 +2,9 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { I18nProvider } from "@/context/I18nContext";
 import { AppShell } from "@/components/AppShell";
+import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
@@ -56,10 +58,11 @@ function PublicOnly({ children }) {
 function App() {
   return (
     <AuthProvider>
+      <I18nProvider>
       <BrowserRouter>
         <Toaster position="top-center" richColors />
         <Routes>
-          <Route path="/" element={<Navigate to="/app" replace />} />
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
           <Route path="/app" element={<Protected><Dashboard /></Protected>} />
@@ -79,9 +82,10 @@ function App() {
           <Route path="/app/setup/learning" element={<Protected><LearningSetup /></Protected>} />
           <Route path="/app/setup/automations" element={<Protected><AutomationSetup /></Protected>} />
           <Route path="/app/setup/bridge" element={<Protected><BridgeSetup /></Protected>} />
-          <Route path="*" element={<Navigate to="/app" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </I18nProvider>
     </AuthProvider>
   );
 }
