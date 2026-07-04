@@ -280,3 +280,12 @@ Ordia passato da "demo/contest" a **Production Release** (cliente reale la pross
 - Nota CTO: evitato di proposito un re-skin totale (icon migration phosphor→lucide, nuova palette del design blueprint in `/app/design_guidelines.json`) a ridosso della demo — alto rischio, basso ritorno. Da schedulare post-presentazione.
 - **Stato dati:** ~3 ordini di test presenti sul workspace demo (dai QA). Non azzerati: rendono la dashboard "viva" per la demo. Azzerabili on-demand.
 
+
+## 2026-07-04 (3) — Frizione catalogo: import AI + ricerca a lente + zero-setup
+Problema utente: caricare il catalogo è una frizione; ricerca prodotto poco intuitiva; errore "cloud" segnalato.
+- **Import catalogo con AI** (backend `POST /products/import-ai` preview + `/products/import-ai/confirm`): carichi QUALSIASI file — CSV/Excel/PDF **o una foto** — l'AI (Claude, riusa `run_catalog_extraction` + vision `ImageContent`) mappa nome/SKU/prezzo/unità/pack/categoria + genera alias. Ritorna anteprima → utente conferma/modifica/rimuove righe → insert con dedupe per nome. Testato E2E con CSV "sporco" (punto e virgola, decimali con virgola, header strani) → 3 prodotti mappati perfettamente + alias. `_read_tabular` ora auto-rileva il separatore CSV (`sep=None, engine=python`).
+- **Ricerca prodotto a lente** (`ProductSearch.js`): trigger con icona lente (ambra se riga incerta) → clic → barra di ricerca → opzioni dal catalogo (nome/SKU/alias) + crea nuovo. Verificato in Order Review.
+- **Zero-setup / catalogo auto-apprendente:** empty-state Catalogo ora comunica "Non serve configurare nulla — inizia a caricare gli ordini, Ordia impara il catalogo da solo" + CTA import AI. (Il create-from-review + learned_aliases già esistenti realizzano l'auto-apprendimento.)
+- i18n: aggiunte chiavi `catalog.aiImported`, `preview.aiFound`, `preview.save` (IT+EN) + traduzioni EN stringhe import.
+- **Errore "cloud" segnalato dall'utente:** non riprodotto; nei log ricorrono `GET /auth/me 401` (token in-memory + cookie di terze parti bloccati nell'iframe del preview) → probabile artefatto SOLO-preview, in produzione (same-origin) il cookie funziona. Da confermare con screenshot utente.
+

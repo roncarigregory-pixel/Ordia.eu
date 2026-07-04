@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Upload, Search, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Search, Package, Loader2, Sparkles } from "lucide-react";
 
 const EMPTY = { sku: "", name: "", category: "General", unit: "unità", pack_size: "", price: 0, aliases: [] };
 
@@ -18,6 +18,9 @@ export default function Catalog() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const fileInput = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const [preview, setPreview] = useState(null); // { count, products }
+  const [savingImport, setSavingImport] = useState(false);
 
   const load = useCallback(() => api.get("/products").then(({ data }) => setProducts(data)).catch(() => setProducts([])), []);
   useEffect(() => { load(); }, [load]);
@@ -58,14 +61,48 @@ export default function Catalog() {
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f);
+    setImporting(true);
     try {
-      const { data } = await api.post("/products/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(t("catalog.imported", { n: data.inserted }));
+      const { data } = await api.post("/products/import-ai", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000,
+      });
+      if (!data.count) {
+        toast.error(t("Nessun prodotto trovato nel file. Prova con una foto più nitida o un altro file."));
+      } else {
+        setPreview(data);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
+  };
+
+  const updatePreviewRow = (i, k, v) => {
+    setPreview((prev) => {
+      const products = [...prev.products];
+      products[i] = { ...products[i], [k]: v };
+      return { ...prev, products };
+    });
+  };
+  const removePreviewRow = (i) => {
+    setPreview((prev) => ({ ...prev, products: prev.products.filter((_, idx) => idx !== i) }));
+  };
+
+  const confirmImport = async () => {
+    if (!preview?.products?.length) return;
+    setSavingImport(true);
+    try {
+      const { data } = await api.post("/products/import-ai/confirm", { products: preview.products });
+      toast.success(t("catalog.aiImported", { n: data.inserted, s: data.skipped }));
+      setPreview(null);
       load();
     } catch (err) {
       toast.error(formatApiError(err));
     } finally {
-      e.target.value = "";
+      setSavingImport(false);
     }
   };
 
@@ -85,9 +122,10 @@ export default function Catalog() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <input ref={fileInput} type="file" accept=".csv,.xlsx,.xls" className="hidden" data-testid="catalog-import-input" onChange={onImport} />
-          <button data-testid="catalog-import-button" onClick={() => fileInput.current?.click()} className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
-            <Upload size={16} /> {t("Importa CSV/Excel")}
+          <input ref={fileInput} type="file" accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif" className="hidden" data-testid="catalog-import-input" onChange={onImport} />
+          <button data-testid="catalog-import-button" disabled={importing} onClick={() => fileInput.current?.click()} className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors disabled:opacity-60">
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} className="text-ai" />}
+            {importing ? t("L'AI sta leggendo…") : t("Importa con AI (foto, PDF, Excel)")}
           </button>
           <button data-testid="catalog-add-button" onClick={openNew} className="flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors">
             <Plus size={18} /> {t("Aggiungi prodotto")}
@@ -106,7 +144,16 @@ export default function Catalog() {
         ) : filtered.length === 0 ? (
           <div className="p-16 text-center">
             <Package size={36} className="mx-auto text-slate-300" />
-            <p className="mt-3 text-sm text-muted-foreground">{t("Nessun prodotto. Aggiungine uno o importa il tuo catalogo.")}</p>
+            <p className="mt-3 text-sm font-medium text-foreground">{t("Non serve configurare nulla per iniziare.")}</p>
+            <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">{t("Inizia a caricare gli ordini: Ordia imparerà il tuo catalogo da solo. Oppure importalo subito da una foto, un PDF o un Excel.")}</p>
+            <div className="mt-5 flex items-center justify-center gap-2">
+              <button data-testid="catalog-empty-import" disabled={importing} onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-2 rounded-lg bg-ai text-white px-4 py-2.5 text-sm font-semibold hover:bg-ai/90 transition-colors disabled:opacity-60">
+                {importing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} {t("Importa con AI")}
+              </button>
+              <button data-testid="catalog-empty-add" onClick={openNew} className="inline-flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
+                <Plus size={16} /> {t("Aggiungi manualmente")}
+              </button>
+            </div>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -143,6 +190,35 @@ export default function Catalog() {
           </table>
         )}
       </div>
+
+      <Dialog open={!!preview} onOpenChange={(v) => !v && setPreview(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display tracking-tight flex items-center gap-2">
+              <Sparkles size={18} className="text-ai" />
+              {t("preview.aiFound", { n: preview?.count || 0 })}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">{t("Controlla e correggi se serve, poi salva. Puoi rimuovere le righe sbagliate.")}</p>
+          <div className="max-h-[52vh] overflow-y-auto rounded-lg border border-border divide-y divide-border">
+            {(preview?.products || []).map((p, i) => (
+              <div key={i} data-testid={`import-preview-row-${i}`} className="flex items-center gap-2 px-3 py-2">
+                <input value={p.name} onChange={(e) => updatePreviewRow(i, "name", e.target.value)} className="flex-1 min-w-0 rounded-md border border-input bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={t("Nome")} />
+                <input value={p.unit || ""} onChange={(e) => updatePreviewRow(i, "unit", e.target.value)} className="w-20 rounded-md border border-input bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={t("Unità")} />
+                <input type="number" step="0.01" value={p.price} onChange={(e) => updatePreviewRow(i, "price", parseFloat(e.target.value) || 0)} className="w-24 rounded-md border border-input bg-white px-2 py-1.5 text-right font-mono text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="€" />
+                <button data-testid={`import-preview-remove-${i}`} onClick={() => removePreviewRow(i)} className="shrink-0 text-slate-300 hover:text-red-500 p-1"><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <button onClick={() => setPreview(null)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">{t("Annulla")}</button>
+            <button data-testid="import-confirm-button" disabled={savingImport || !(preview?.products?.length)} onClick={confirmImport} className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-60">
+              {savingImport && <Loader2 size={15} className="animate-spin" />}
+              {t("preview.save", { n: preview?.products?.length || 0 })}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

@@ -37,10 +37,11 @@ export function ProductSearch({ products, value, onSelect, onCreate, invalid, te
         onClick={() => { setOpen((o) => !o); setQ(""); }}
         className={cn(
           "flex w-full items-center gap-2 rounded-lg border bg-white px-2.5 py-2 text-sm text-left transition-colors",
-          invalid ? "border-amber-300" : "border-input hover:border-slate-300"
+          invalid ? "border-amber-300 bg-amber-50/40 hover:border-amber-400" : "border-input hover:border-slate-300"
         )}
       >
-        <span className={cn("flex-1 truncate", selected ? "text-foreground" : "text-amber-700")}>
+        <Search size={15} className={cn("shrink-0", invalid ? "text-amber-500" : "text-slate-400")} />
+        <span className={cn("flex-1 truncate", selected ? "text-foreground" : "font-medium text-amber-700")}>
           {selected ? selected.name : t("— Cerca prodotto —")}
         </span>
         {selected && <span className="shrink-0 font-mono text-xs text-muted-foreground">{selected.sku}</span>}

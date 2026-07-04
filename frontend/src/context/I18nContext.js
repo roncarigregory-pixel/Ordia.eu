@@ -107,6 +107,9 @@ const UI = {
     "cust.reorderCreated": "Riordino creato con {n} prodotti abituali. Rivedi e conferma.",
     "newOrder.dropzone": "Trascina un file {ch} o clicca per sfogliare",
     "catalog.imported": "{n} prodotti importati",
+    "catalog.aiImported": "{n} prodotti importati · {s} già presenti saltati",
+    "preview.aiFound": "L'AI ha trovato {n} prodotti",
+    "preview.save": "Salva {n} prodotti",
     "time.minAgo": "{n} min fa",
     "time.hAgo": "{n} h fa",
     "review.productCreated": "Prodotto «{name}» creato e abbinato",
@@ -213,6 +216,9 @@ const UI = {
     "cust.reorderCreated": "Reorder created with {n} habitual products. Review and confirm.",
     "newOrder.dropzone": "Drop a {ch} file or click to browse",
     "catalog.imported": "{n} products imported",
+    "catalog.aiImported": "{n} products imported · {s} duplicates skipped",
+    "preview.aiFound": "AI found {n} products",
+    "preview.save": "Save {n} products",
     "time.minAgo": "{n} min ago",
     "time.hAgo": "{n}h ago",
     "review.productCreated": "Product “{name}” created and matched",
@@ -258,6 +264,17 @@ const EN = {
   "In attesa del collegamento del Bridge… questa scheda si aggiorna da sola appena l'agente si connette.": "Waiting for the Bridge to connect… this card updates on its own as soon as the agent comes online.",
   "Comando copiato": "Command copied",
   "Download del Bridge avviato": "Bridge download started",
+
+  // AI catalog import (EN)
+  "Non serve configurare nulla per iniziare.": "No setup needed to get started.",
+  "Inizia a caricare gli ordini: Ordia imparerà il tuo catalogo da solo. Oppure importalo subito da una foto, un PDF o un Excel.": "Start processing orders and Ordia will learn your catalog on its own. Or import it right away from a photo, a PDF or an Excel file.",
+  "Importa con AI (foto, PDF, Excel)": "Import with AI (photo, PDF, Excel)",
+  "L'AI sta leggendo…": "AI is reading…",
+  "Importa con AI": "Import with AI",
+  "Aggiungi manualmente": "Add manually",
+  "Nessun prodotto trovato nel file. Prova con una foto più nitida o un altro file.": "No products found in the file. Try a clearer photo or another file.",
+  "Controlla e correggi se serve, poi salva. Puoi rimuovere le righe sbagliate.": "Review and fix if needed, then save. You can remove wrong rows.",
+  "Unità": "Unit",
 
   // Dashboard (static)
   "Centro di Comando": "Command Center",

@@ -496,7 +496,11 @@ async def import_products_ai_confirm(body: CatalogConfirm, user: dict = Depends(
 def _read_tabular(content: bytes, filename: str) -> pd.DataFrame:
     name = (filename or "").lower()
     if name.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(content))
+        # Auto-detect delimiter (comma, semicolon, tab) — suppliers vary a lot.
+        try:
+            return pd.read_csv(io.BytesIO(content), sep=None, engine="python", on_bad_lines="skip")
+        except Exception:
+            return pd.read_csv(io.BytesIO(content), on_bad_lines="skip")
     return pd.read_excel(io.BytesIO(content))
 
 def _extract_pdf_text(content: bytes) -> str:
