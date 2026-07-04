@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 15 — Follow-up i18n retest for Ordia. Focus: Bridge setup page (/app/setup/bridge) fully translated in EN/IT, plus regression sanity of the whole in-app surface and the public Landing Bridge callout. Logged in as demo@ordia.app, forced EN via localStorage, and verified Bridge setup renders in English with all required phrases and no raw i18n keys or crash. Toggled to IT via the header 🇮🇹 button and verified the same page renders in Italian without raw keys or crash. Also verified the Landing dark 'Ordia Bridge' callout in EN ('No API? No problem.', 'Learns your procedure', 'Runs it autonomously', 'Works even without an API', 'It doesn't matter which ERP you use', 'Born for food wholesale. Built for every industry — from sellers to buyers.'). Regression: navigated across Dashboard, Orders, New Order, Customers, Notifications, Catalog, Setup landing and all 7 setup subpages (Company, Team, Automations, Learning, Email, ERP, WhatsApp) in EN — 14/14 routes rendered without crash and without any raw i18n key leak.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_15.json"],
+  "action_items": [
+    "None blocking. Optional (still open from iter 14): translate Login/Register email placeholder 'tu@azienda.com' -> 'you@company.com' in EN, and provide an English poster for the landing 90s video."
+  ],
+  "critical_code_review_comments": [
+    "BridgeSetup i18n retrofit is clean: each sub-component (ProcedurePreview, ReadinessPanel, BridgeDiary, AgentCard, main BridgeSetup) has its own `useI18n()` call at the top, avoiding the recurring 'imported but not destructured' bug class that caused earlier crashes.",
+    "No raw keys such as bridge.stepsCount / bridge.setField / bridge.click / bridge.summarySent were observed in the DOM in either language — interpolation is resolved correctly.",
+    "Language toggle in header works live without reload on Bridge page (both directions verified)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only review)",
+    "frontend": "100% for scope — Bridge EN/IT translated, no crashes, no raw keys across 14 in-app routes + Landing."
+  },
+  "test_credentials": "demo@ordia.app / demo123",
+  "seed_data_creation": "None. Existing demo workspace.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_15 verified the fix from iter_14. BridgeSetup.js now has 5 useI18n() calls (main + 4 sub-components) and renders correctly in both EN and IT. The only remaining minor known items (from iter_14, non-blocking): Login email placeholder still Italian, Landing video poster is a rasterized Italian thumbnail. Backend-driven Bridge readiness step count strings like '(0/5)' / '(1/7 giorni)' remain partly IT — explicitly noted as an acceptable limitation by main agent in the review request, so NOT reported as a bug.",
+  "rca of the issue": "N/A — issue from iter_14 (BridgeSetup entirely untranslated, 'useI18n is not defined' crash risk) has been fully resolved. Verified: EN mode shows 'Ordia Bridge', 'Approved orders appear directly in your management system...', 'Your Bridge this week', 'Send me the summary', 'correct test drafts', 'codes in master data', 'self-heals', '1 · Your ERP format', 'Upload a sample file', '2 · Bridge agents', 'New agent', 'Learning' maturity badge, 'MANAGEMENT SYSTEM / ERP', 'EXPORT PROFILE'. IT mode shows the equivalent Italian strings. Regression across 14 authenticated routes = no crash, no raw i18n keys."
+}
