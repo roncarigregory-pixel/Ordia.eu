@@ -34,7 +34,7 @@ export function GlobalSearch() {
     try {
       const { data } = await api.get(`/search?q=${encodeURIComponent(value)}`);
       setRes(data);
-    } catch (e) { console.debug("global search failed", e?.message); }
+    } catch { /* ignore search errors */ }
   }, []);
 
   useEffect(() => {
