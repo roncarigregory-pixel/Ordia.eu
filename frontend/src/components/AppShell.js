@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { OnboardingProvider } from "@/components/Onboarding";
 import { LayoutGrid, Inbox, Users, Package, Settings, LogOut, Plus, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export function AppShell({ children }) {
   const initials = (user?.name || "U").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
   return (
+    <OnboardingProvider>
     <div className="min-h-screen bg-background flex">
       <aside className="hidden md:flex w-[240px] shrink-0 flex-col border-r border-border bg-white">
         <div className="flex items-center gap-2 px-5 h-16 border-b border-border">
@@ -128,5 +130,6 @@ export function AppShell({ children }) {
         </nav>
       </div>
     </div>
+    </OnboardingProvider>
   );
 }

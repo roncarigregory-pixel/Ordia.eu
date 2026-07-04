@@ -21,8 +21,8 @@ import {
  * The same asset is reusable for site / landing / social / demos.
  * ------------------------------------------------------------------ */
 export const ORDIA_TUTORIAL_VIDEO = {
-  type: "", // "" while we wait for the final cut → shows the branded placeholder
-  src: "",
+  type: "mp4", // "" placeholder | "mp4" | "youtube"
+  src: "/ordia-tutorial-16x9.mp4", // 16:9 desktop cut (also /ordia-tutorial-9x16.mp4 for social)
   poster: "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/a948ca6385b0a67de5e0c7210fd6dcf546b499f2df671ced7bbdf3cced50119f.png",
 };
 
