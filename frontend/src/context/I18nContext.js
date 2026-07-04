@@ -585,6 +585,7 @@ const EN = {
   "Assegna a": "Assign to",
   "— Seleziona un membro —": "— Select a member —",
   "Salva automazioni": "Save automations",
+  "tu@azienda.com": "you@company.com",
 
   // EmailSetup
   "Un altro canale d'ordine, accanto a WhatsApp.": "Another order channel, alongside WhatsApp.",

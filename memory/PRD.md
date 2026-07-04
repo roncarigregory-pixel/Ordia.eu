@@ -17,6 +17,21 @@ Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-r
 
 ## ✅ Completato
 
+### 🌍 Internazionalizzazione IT/EN + Posizionamento (Giu 2026, iteration_14/15, 100% pass)
+- **i18n completo** (`context/I18nContext.js`): `I18nProvider`, `useI18n()`, `t(key, vars)` con interpolazione `{var}`.
+  Approccio a **chiave-italiana** (identità per IT) + mappa frasi IT→EN. Rilevamento lingua browser al primo accesso
+  (IT se browser italiano, altrimenti EN), persistenza in `localStorage['ordia.lang']`.
+- **LanguageToggle** 🇮🇹/🇬🇧 sempre visibile in alto a destra nell'AppShell (desktop top bar + header mobile), cambio 1-click senza reload.
+- **Tutta l'app tradotta**: Landing, Login, Register, Dashboard, Orders, NewOrder, OrderReview, Customers,
+  CustomerDetail, NotificationCenter, Catalog, Setup + tutte le sotto-pagine (Company, Team, Automation, Learning,
+  Email, ERP, WhatsApp, **Bridge**), Onboarding (welcome + tour + FAQ). Verificato: 14/14 route, nessun crash, nessuna chiave grezza.
+- **Posizionamento "NON è un ERP"**: callout nell'hero della landing, sezione dedicata "Funziona con il tuo gestionale",
+  nuova FAQ ("Ordia sostituisce il mio gestionale?"), rinforzato in onboarding. Messaggio: "Hai un gestionale? Ordia lavora con quello che usi già."
+- **Valorizzazione Ordia Bridge**: callout scuro in landing ("Nessuna API? Nessun problema." — impara la procedura del tuo
+  gestionale e la esegue da solo, anche senza API) + step dedicato nel tour guidato + riga di visione ("dai venditori ai compratori, ogni settore").
+
+
+
 ### P0 — Core Workflow (iteration_6, 100% pass)
 - **Nuovo Ordine** (`NewOrder.js`): 8 canali (Testo, WhatsApp, Email, PDF, Excel, CSV, Foto, Vocale),
   drag & drop universale, stepper AI animato (framer-motion, 6 fasi).

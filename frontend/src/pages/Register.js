@@ -63,7 +63,7 @@ export default function Register() {
           <form onSubmit={submit} className="space-y-4">
             {field("company_name", t("Azienda"), "text", "Fresh Foods Ingrosso")}
             {field("name", t("Il tuo nome"), "text", "Alessandro Rossi")}
-            {field("email", t("Email"), "email", "tu@azienda.com")}
+            {field("email", t("Email"), "email", t("tu@azienda.com"))}
             {field("password", t("Password"), "password", t("Almeno 6 caratteri"))}
 
             {error && (
