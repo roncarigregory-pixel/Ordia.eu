@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useI18n, LanguageToggle } from "@/context/I18nContext";
 import {
-  Sparkles, ArrowRight, PlayCircle, Clock, ShieldCheck, Inbox, Plug,
+  Sparkles, ArrowRight, PlayCircle, Clock, ShieldCheck, Inbox, Plug, Zap,
   MessageCircle, Mail, FileText, Sheet, Camera, Mic, CheckCircle2, Cpu, Send,
 } from "lucide-react";
 
@@ -129,6 +129,7 @@ export default function Landing() {
             <span className="text-sm font-semibold uppercase tracking-wide text-ai">{t("erp.kicker")}</span>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">{t("erp.title")}</h2>
             <p className="mt-3 text-base text-muted-foreground">{t("erp.sub")}</p>
+            <p className="mt-3 text-lg font-semibold text-foreground">{t("erp.anyErp")}</p>
           </motion.div>
           <div className="mt-10 grid gap-5 sm:grid-cols-3">
             {[
@@ -143,6 +144,35 @@ export default function Landing() {
               </motion.div>
             ))}
           </div>
+
+          {/* Ordia Bridge — the moat */}
+          <motion.div {...fade(0.1)} className="mt-6 overflow-hidden rounded-2xl border border-ai/20 bg-[#0f1729] text-white">
+            <div className="grid gap-6 p-7 sm:p-9 lg:grid-cols-[1.3fr_1fr] lg:items-center">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-ai/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ai">
+                  <Plug size={13} /> {t("erp.bridge.badge")}
+                </span>
+                <h3 className="mt-3 font-display text-2xl font-bold tracking-tight sm:text-3xl">{t("erp.bridge.title")}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">{t("erp.bridge.d")}</p>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { icon: Cpu, label: t("erp.bridge.p1") },
+                  { icon: Zap, label: t("erp.bridge.p2") },
+                  { icon: ShieldCheck, label: t("erp.bridge.p3") },
+                ].map((p) => (
+                  <div key={p.label} className="flex items-center gap-3 rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ai/20 text-ai"><p.icon size={18} /></span>
+                    <span className="text-sm font-medium">{p.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.p {...fade(0.15)} className="mt-6 text-center text-sm font-medium text-muted-foreground">
+            {t("vision.line")}
+          </motion.p>
         </div>
       </section>
 

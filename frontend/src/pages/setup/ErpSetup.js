@@ -288,7 +288,3 @@ export default function ErpSetup() {
     </div>
   );
 }
-v>
-    </div>
-  );
-}

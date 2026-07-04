@@ -55,7 +55,7 @@ export default function Setup() {
             {data.steps.map((s) => (
               <div key={s.key} className="flex items-center gap-1.5 text-sm">
                 {s.done ? <CheckCircle size={16} weight="fill" className="text-emerald-500" /> : <Circle size={16} className="text-slate-300" />}
-                <span className={cn(s.done ? "text-foreground" : "text-muted-foreground")}>{s.label}</span>
+                <span className={cn(s.done ? "text-foreground" : "text-muted-foreground")}>{t(s.label)}</span>
               </div>
             ))}
           </div>

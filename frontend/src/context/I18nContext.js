@@ -66,6 +66,14 @@ const UI = {
     "erp.b2.d": "Nessuna migrazione: Ordia si aggancia a monte in pochi giorni.",
     "erp.b3.t": "Rischio zero",
     "erp.b3.d": "I tuoi dati e i tuoi processi restano dove sono. Automatizzi solo l'inserimento.",
+    "erp.anyErp": "Non importa quale gestionale usi.",
+    "erp.bridge.badge": "Ordia Bridge",
+    "erp.bridge.title": "Nessuna API? Nessun problema.",
+    "erp.bridge.d": "Con Ordia Bridge ci colleghiamo al tuo gestionale in qualsiasi modo — API, file o direttamente sulla sua interfaccia. Il Bridge impara la tua procedura di inserimento e la esegue da solo, esattamente come farebbe un tuo operatore. SAP, Odoo, Danea, TeamSystem, Zucchetti o un software su misura: nessuno è escluso.",
+    "erp.bridge.p1": "Impara la tua procedura",
+    "erp.bridge.p2": "La esegue in autonomia",
+    "erp.bridge.p3": "Funziona anche senza API",
+    "vision.line": "Nato per l'ingrosso alimentare. Pensato per ogni settore — dai venditori ai compratori.",
 
     // Dashboard dynamic / interpolated
     "dash.summary.none": "Nessun ordine ricevuto oggi. Incolla il primo e lascia lavorare Ordia.",
@@ -160,6 +168,14 @@ const UI = {
     "erp.b2.d": "No migration: Ordia plugs in upstream in a few days.",
     "erp.b3.t": "Zero risk",
     "erp.b3.d": "Your data and processes stay where they are. You only automate data entry.",
+    "erp.anyErp": "It doesn't matter which ERP you use.",
+    "erp.bridge.badge": "Ordia Bridge",
+    "erp.bridge.title": "No API? No problem.",
+    "erp.bridge.d": "With Ordia Bridge we connect to your management system any way it takes — API, file, or right on its interface. The Bridge learns your data-entry procedure and runs it by itself, exactly like one of your operators would. SAP, Odoo, Danea, TeamSystem, Zucchetti or a custom-built tool: none are left out.",
+    "erp.bridge.p1": "Learns your procedure",
+    "erp.bridge.p2": "Runs it autonomously",
+    "erp.bridge.p3": "Works even without an API",
+    "vision.line": "Born for food wholesale. Built for every industry — from sellers to buyers.",
 
     // Dashboard dynamic / interpolated
     "dash.summary.none": "No orders received today. Paste the first one and let Ordia work.",
@@ -474,6 +490,7 @@ const EN = {
   "Email, WhatsApp e il gestionale. Si configura una volta sola.": "Email, WhatsApp and your ERP. Set up once.",
   "Aiuto sempre a portata": "Help always at hand",
   "Rivedi il video o questo tour quando vuoi, da qui.": "Replay the video or this tour anytime, from here.",
+  "Colleghiamo Ordia al tuo gestionale in qualsiasi modo — API, file o direttamente sulla sua interfaccia. Il Bridge impara la tua procedura e la esegue da solo, anche senza API.": "We connect Ordia to your management system any way it takes — API, file, or right on its interface. The Bridge learns your procedure and runs it by itself, even without an API.",
   "Come arrivano gli ordini in Ordia?": "How do orders get into Ordia?",
   "Automaticamente dai canali collegati (WhatsApp, email), oppure incollandoli o caricandoli con il pulsante \"Nuovo Ordine\".": "Automatically from connected channels (WhatsApp, email), or by pasting/uploading them with the \"New Order\" button.",
   "Devo controllare ogni ordine riga per riga?": "Do I have to check every order line by line?",
@@ -690,6 +707,7 @@ const EN = {
   "Invia altro test": "Send another test",
   "Rimuovi": "Remove",
   "Risoluzione problemi & errori comuni": "Troubleshooting & common errors",
+  "Nella configurazione WhatsApp della tua app Meta, incolla questi valori come Callback URL e Verify Token, poi iscriviti al campo": "In the WhatsApp settings of your Meta app, paste these values as Callback URL and Verify Token, then subscribe to the field",
 };
 
 const I18nContext = createContext(null);

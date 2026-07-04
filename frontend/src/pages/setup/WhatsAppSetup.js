@@ -164,28 +164,28 @@ export default function WhatsAppSetup() {
       {/* STEP 1 — Credenziali */}
       {step === 1 && (
         <div className="rounded-md border border-border bg-white p-6 space-y-4">
-          <h2 className="font-display text-lg font-bold tracking-tight">Inserisci le credenziali Meta</h2>
-          <Field label="Etichetta" hint="Un nome per riconoscere questo numero." testid="wa-label">
+          <h2 className="font-display text-lg font-bold tracking-tight">{t("Inserisci le credenziali Meta")}</h2>
+          <Field label={t("Etichetta")} hint={t("Un nome per riconoscere questo numero.")} testid="wa-label">
             <input value={form.label} onChange={set("label")} className={inputCls} />
           </Field>
-          <Field label="Access Token permanente" hint="System User → Genera token, con scope whatsapp_business_messaging + management." testid="wa-token">
+          <Field label={t("Access Token permanente")} hint={t("System User → Genera token, con scope whatsapp_business_messaging + management.")} testid="wa-token">
             <input value={form.access_token} onChange={set("access_token")} placeholder="EAAG…" className={cn(inputCls, "font-mono")} />
           </Field>
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Phone Number ID" hint="WhatsApp Manager → Numeri di telefono." testid="wa-phone-id">
+            <Field label="Phone Number ID" hint={t("WhatsApp Manager → Numeri di telefono.")} testid="wa-phone-id">
               <input value={form.phone_number_id} onChange={set("phone_number_id")} placeholder="123456789012345" className={cn(inputCls, "font-mono")} />
             </Field>
-            <Field label="WhatsApp Business Account ID" hint="Impostazioni Business → Account WhatsApp." testid="wa-waba-id">
+            <Field label={t("WhatsApp Business Account ID")} hint={t("Impostazioni Business → Account WhatsApp.")} testid="wa-waba-id">
               <input value={form.waba_id} onChange={set("waba_id")} placeholder="987654321098765" className={cn(inputCls, "font-mono")} />
             </Field>
           </div>
-          <Field label="App Secret (opzionale)" hint="Per verificare la firma dei webhook in ingresso." testid="wa-app-secret">
+          <Field label={t("App Secret (opzionale)")} hint={t("Per verificare la firma dei webhook in ingresso.")} testid="wa-app-secret">
             <input value={form.app_secret} onChange={set("app_secret")} placeholder="••••••" className={cn(inputCls, "font-mono")} />
           </Field>
           <div className="flex gap-2 pt-2">
-            <button onClick={() => setStep(0)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">Indietro</button>
+            <button onClick={() => setStep(0)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">{t("Indietro")}</button>
             <button data-testid="wa-save-creds" onClick={saveCreds} disabled={busy} className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-60">
-              Connetti e verifica <ArrowRight size={16} weight="bold" />
+              {t("Connetti e verifica")} <ArrowRight size={16} weight="bold" />
             </button>
           </div>
         </div>
@@ -194,7 +194,7 @@ export default function WhatsAppSetup() {
       {/* STEP 2 — Verifica */}
       {step === 2 && (
         <div className="rounded-md border border-border bg-white p-6">
-          <h2 className="font-display text-lg font-bold tracking-tight mb-4">Verifica connessione in tempo reale</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight mb-4">{t("Verifica connessione in tempo reale")}</h2>
           <div className="space-y-3">
             {STAGES.map((s, i) => (
               <div key={s} data-testid={`wa-stage-${i}`} className={cn("flex items-center gap-3 rounded-md border px-4 py-3",
@@ -207,18 +207,18 @@ export default function WhatsAppSetup() {
                   : validating && i === stage ? <div className="h-2 w-2 rounded-full bg-slate-900 animate-pulse" />
                   : error && i >= stage ? <WarningCircle size={18} weight="fill" className="text-red-500" />
                   : <Circle size={18} className="text-slate-300" />}
-                <span className="text-sm font-medium">{s}</span>
+                <span className="text-sm font-medium">{t(s)}</span>
               </div>
             ))}
           </div>
 
           {error && (
             <div data-testid="wa-error" className="mt-4 rounded-md border border-red-200 bg-red-50 p-4">
-              <p className="text-sm font-medium text-red-800 flex items-center gap-2"><WarningCircle size={16} weight="fill" /> Connessione non riuscita</p>
+              <p className="text-sm font-medium text-red-800 flex items-center gap-2"><WarningCircle size={16} weight="fill" /> {t("Connessione non riuscita")}</p>
               <p className="text-sm text-red-700 mt-1">{error}</p>
               <div className="mt-3 flex gap-2">
-                <button data-testid="wa-retry" onClick={() => runValidation()} className="flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90"><ArrowClockwise size={16} /> Riprova</button>
-                <button onClick={() => setStep(1)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">Modifica credenziali</button>
+                <button data-testid="wa-retry" onClick={() => runValidation()} className="flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90"><ArrowClockwise size={16} /> {t("Riprova")}</button>
+                <button onClick={() => setStep(1)} className="rounded-md border border-input bg-white px-4 py-2 text-sm font-medium hover:bg-secondary">{t("Modifica credenziali")}</button>
               </div>
             </div>
           )}
@@ -232,15 +232,15 @@ export default function WhatsAppSetup() {
             <CheckCircle size={18} weight="fill" className="text-emerald-500" />
             <span className="text-sm text-emerald-800">Connesso: <span className="font-medium">{account?.verified_name || account?.label}</span> {account?.display_phone_number ? `(${account.display_phone_number})` : ""}</span>
           </div>
-          <h2 className="font-display text-lg font-bold tracking-tight">Invia un messaggio di prova</h2>
-          <Field label="Numero destinatario" hint="Con prefisso internazionale, senza + (es. 39333xxxxxxx). Idealmente il tuo numero." testid="wa-test-to">
+          <h2 className="font-display text-lg font-bold tracking-tight">{t("Invia un messaggio di prova")}</h2>
+          <Field label={t("Numero destinatario")} hint={t("Con prefisso internazionale, senza + (es. 39333xxxxxxx). Idealmente il tuo numero.")} testid="wa-test-to">
             <input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="393331234567" className={cn(inputCls, "font-mono")} />
           </Field>
           <div className="flex gap-2">
             <button data-testid="wa-send-test" onClick={sendTest} disabled={busy} className="flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-60">
-              <PaperPlaneTilt size={16} weight="fill" /> {busy ? "Invio…" : "Invia test"}
+              <PaperPlaneTilt size={16} weight="fill" /> {busy ? t("Invio…") : t("Invia test")}
             </button>
-            <button onClick={() => setStep(4)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">Salta</button>
+            <button onClick={() => setStep(4)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">{t("Salta")}</button>
           </div>
         </div>
       )}
@@ -250,13 +250,13 @@ export default function WhatsAppSetup() {
         <div className="space-y-4">
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-6 text-center">
             <CheckCircle size={40} weight="fill" className="mx-auto text-emerald-500" />
-            <h2 className="mt-3 font-display text-xl font-black tracking-tight text-emerald-900">WhatsApp è connesso</h2>
-            <p className="mt-1 text-sm text-emerald-700">Gli ordini in arrivo diventeranno automaticamente bozze nella tua Inbox.</p>
+            <h2 className="mt-3 font-display text-xl font-black tracking-tight text-emerald-900">{t("WhatsApp è connesso")}</h2>
+            <p className="mt-1 text-sm text-emerald-700">{t("Gli ordini in arrivo diventeranno automaticamente bozze nella tua Inbox.")}</p>
           </div>
 
           <div className="rounded-md border border-border bg-white p-6 space-y-4">
-            <h3 className="font-display font-bold tracking-tight">Ricezione ordini (webhook)</h3>
-            <p className="text-sm text-muted-foreground">Nella configurazione WhatsApp della tua app Meta, incolla questi valori come Callback URL e Verify Token, poi iscriviti al campo <code className="font-mono">messages</code>.</p>
+            <h3 className="font-display font-bold tracking-tight">{t("Ricezione ordini (webhook)")}</h3>
+            <p className="text-sm text-muted-foreground">{t("Nella configurazione WhatsApp della tua app Meta, incolla questi valori come Callback URL e Verify Token, poi iscriviti al campo")} <code className="font-mono">messages</code>.</p>
             <Field label="Callback URL" testid="wa-webhook-url">
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded border border-border bg-secondary px-3 py-2 text-sm font-mono break-all">{webhookUrl}</code>
@@ -272,8 +272,8 @@ export default function WhatsAppSetup() {
           </div>
 
           <div className="flex gap-2">
-            <button data-testid="wa-back-to-test" onClick={() => setStep(3)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">Invia altro test</button>
-            <button data-testid="wa-remove" onClick={removeAccount} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"><Trash size={16} /> Rimuovi</button>
+            <button data-testid="wa-back-to-test" onClick={() => setStep(3)} className="rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium hover:bg-secondary">{t("Invia altro test")}</button>
+            <button data-testid="wa-remove" onClick={removeAccount} className="flex items-center gap-1.5 rounded-md border border-input bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"><Trash size={16} /> {t("Rimuovi")}</button>
           </div>
         </div>
       )}
@@ -282,13 +282,13 @@ export default function WhatsAppSetup() {
       <div className="mt-8">
         <Accordion type="single" collapsible>
           <AccordionItem value="troubleshooting" className="border border-border rounded-md bg-white px-4">
-            <AccordionTrigger className="text-sm font-medium" data-testid="wa-troubleshooting">Risoluzione problemi & errori comuni</AccordionTrigger>
+            <AccordionTrigger className="text-sm font-medium" data-testid="wa-troubleshooting">{t("Risoluzione problemi & errori comuni")}</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-3 pb-2">
                 {ERRORS.map((e) => (
                   <div key={e.c} className="text-sm">
-                    <p className="font-medium">{e.c}</p>
-                    <p className="text-muted-foreground">{e.f}</p>
+                    <p className="font-medium">{t(e.c)}</p>
+                    <p className="text-muted-foreground">{t(e.f)}</p>
                   </div>
                 ))}
               </div>

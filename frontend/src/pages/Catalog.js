@@ -11,6 +11,7 @@ import { Plus, Pencil, Trash2, Upload, Search, Package } from "lucide-react";
 const EMPTY = { sku: "", name: "", category: "General", unit: "unità", pack_size: "", price: 0, aliases: [] };
 
 export default function Catalog() {
+  const { t } = useI18n();
   const [products, setProducts] = useState(null);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);

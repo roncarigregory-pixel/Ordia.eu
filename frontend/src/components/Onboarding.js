@@ -41,6 +41,7 @@ const TOUR_STEPS = [
   { selector: "nav-orders", title: "I tuoi ordini", body: "Qui trovi gli ordini letti dall'AI. Le righe incerte sono evidenziate: controlli e clicchi Approva." },
   { selector: "nav-notifications", title: "Avvisi intelligenti", body: "Ordia ti segnala solo ciò che richiede attenzione. Niente rumore." },
   { selector: "nav-setup", title: "Collega i tuoi canali", body: "Email, WhatsApp e il gestionale. Si configura una volta sola." },
+  { selector: "nav-setup", title: "Ordia Bridge", body: "Colleghiamo Ordia al tuo gestionale in qualsiasi modo — API, file o direttamente sulla sua interfaccia. Il Bridge impara la tua procedura e la esegue da solo, anche senza API." },
   { selector: "onboarding-help-btn", title: "Aiuto sempre a portata", body: "Rivedi il video o questo tour quando vuoi, da qui." },
 ];
 
