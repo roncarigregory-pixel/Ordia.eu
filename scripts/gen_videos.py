@@ -13,7 +13,7 @@ os.makedirs(WORK, exist_ok=True)
 
 GAP = 0.30   # seconds of silence between narration segments
 TAIL = 0.7   # trailing silence
-RATE = "+25%"  # snappier delivery
+RATE = "+12%"  # snappy but comfortable delivery
 
 LANGS = {
     "it": {
