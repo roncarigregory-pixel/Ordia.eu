@@ -272,3 +272,11 @@ Ordia passato da "demo/contest" a **Production Release** (cliente reale la pross
 - P1: navigate('/login') esplicito in logout() (difensivo).
 - P2: WhatsApp Embedded Signup scaffolding (post approvazione Meta BSP).
 - P2: Stripe billing (trial→paid).
+
+## 2026-07-04 (2) — Video, QA import/export, uniformità
+- **Video tutorial rigenerati** (`scripts/gen_videos.py`, ffmpeg+edge-tts, narrazione-driven): IT 88s→44s (2.0x), EN 88s→48s (1.82x), 16:9+9:16, più veloci/dinamici, voce che copre tutta la clip. Backup pristino visual in `_video_work/orig_*`.
+- **QA ingestion + export end-to-end (iteration_17.json): 100% pass, 0 bug.** Tutti i formati testo/PDF/Excel/immagine/audio → estrazione AI (Claude) + Whisper reali → ordine strutturato; Order Review edit/save/persist; export JSON/CSV/XLSX/PDF; export-profiles lifecycle. Test file: `backend/tests/test_iter17_ingestion_export.py` (cleanup automatico ordini).
+- **Uniformità design:** audit visivo → app GIÀ enterprise-grade e coerente (sidebar/tipografia/card/badge/spaziature). Toaster sonner già `richColors`+`top-center`. Fix applicato: localizzato il canale sorgente ("text"→"testo" ecc.) su Dashboard/Orders/OrderReview via chiavi `ch.*` (IT+EN) — eliminato l'unico mix di lingua. In italiano (lingua del cliente) l'app è 100% coerente.
+- Nota CTO: evitato di proposito un re-skin totale (icon migration phosphor→lucide, nuova palette del design blueprint in `/app/design_guidelines.json`) a ridosso della demo — alto rischio, basso ritorno. Da schedulare post-presentazione.
+- **Stato dati:** ~3 ordini di test presenti sul workspace demo (dai QA). Non azzerati: rendono la dashboard "viva" per la demo. Azzerabili on-demand.
+

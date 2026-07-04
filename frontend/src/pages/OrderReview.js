@@ -364,7 +364,7 @@ export default function OrderReview() {
             <div className="flex items-center gap-2 border-b border-border px-4 py-3">
               {isImage ? <ImageIcon size={16} className="text-slate-400" /> : <FileText size={16} className="text-slate-400" />}
               <span className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">{t("Sorgente originale")}</span>
-              <span className="ml-auto rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{order.source_type}</span>
+              <span className="ml-auto rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{t(`ch.${order.source_type}`)}</span>
             </div>
             <pre data-testid="order-source" className="max-h-[540px] overflow-y-auto whitespace-pre-wrap p-4 font-mono text-sm leading-relaxed text-slate-700">
               {order.source_preview || "—"}

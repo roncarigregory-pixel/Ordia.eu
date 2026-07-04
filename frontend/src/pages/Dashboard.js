@@ -149,7 +149,7 @@ export default function Dashboard() {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{o.customer_name || t("Cliente sconosciuto")}</p>
-                      <p className="truncate font-mono text-xs text-muted-foreground">{o.line_items.length} {t("articoli")} · {o.source_type}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{o.line_items.length} {t("articoli")} · {t(`ch.${o.source_type}`)}</p>
                     </div>
                     <StatusBadge status={o.status} />
                   </button>

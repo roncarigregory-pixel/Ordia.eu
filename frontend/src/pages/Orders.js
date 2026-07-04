@@ -119,7 +119,7 @@ export default function Orders() {
                 >
                   <td className="px-5 py-3 font-medium">{o.customer_name || t("Cliente sconosciuto")}</td>
                   <td className="px-5 py-3 text-muted-foreground font-mono hidden sm:table-cell">{o.line_items.length}</td>
-                  <td className="px-5 py-3 text-muted-foreground hidden md:table-cell capitalize">{o.source_type}</td>
+                  <td className="px-5 py-3 text-muted-foreground hidden md:table-cell">{t(`ch.${o.source_type}`)}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                   <td className="px-5 py-3 text-right"><ChevronRight size={16} className="text-slate-300 inline" /></td>
                 </tr>
