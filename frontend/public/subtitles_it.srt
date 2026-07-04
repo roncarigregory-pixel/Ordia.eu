@@ -1,0 +1,31 @@
+1
+00:00:00,000 --> 00:00:06,000
+Ogni giorno ricevi ordini da mille canali diversi.
+
+2
+00:00:06,000 --> 00:00:16,000
+WhatsApp, email, PDF, Excel, foto: di solito andrebbero ridigitati a mano.
+
+3
+00:00:16,000 --> 00:00:26,000
+Con Ordia basta caricarli. Ci pensa l'intelligenza artificiale.
+
+4
+00:00:26,000 --> 00:00:40,000
+L'AI legge il contenuto ed estrae cliente, articoli e quantità in pochi secondi.
+
+5
+00:00:40,000 --> 00:00:52,000
+Controlli solo le righe evidenziate come incerte. Il resto è già pronto.
+
+6
+00:00:52,000 --> 00:01:00,000
+Un click su Approva...
+
+7
+00:01:00,000 --> 00:01:10,000
+...e l'ordine è pronto per il tuo gestionale. In automatico.
+
+8
+00:01:10,000 --> 00:01:15,000
+Ordia. Dagli ordini caotici agli ordini pronti.
