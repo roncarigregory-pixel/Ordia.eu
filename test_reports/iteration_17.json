@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 17 — Full ingestion pipeline (text/PDF/Excel/image/audio) + ERP export end-to-end. Backend pytest: 8/8 passed against demo@ordia.app. Frontend Playwright: text->extract->review->edit->save->reload->export->approve all pass. AI extraction (Claude) and audio transcription (Whisper) are REAL (Emergent LLM key) and produce clean structured orders in every format.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter17_ingestion_export.py",
+    "/app/test_reports/pytest/iter17.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/server.py is 2892 lines — well past the recommended 700-line threshold. It mixes ingestion, orders, notifications, ERP connectors, export profiles, learning loop, integrations and template-builder in a single file. Highly recommend splitting into focused modules (orders/, ingestion/, erp/, export_profiles/, notifications/) for maintainability.",
+    "POST /orders/extract uses multipart form (Form + File) — not JSON. Consistent with file uploads (needed for PDF/Excel/image/audio), but the text path also uses multipart which is inconsistent with the rest of the JSON API. Not a bug — API-shape smell.",
+    "_extract_pdf_text() returns empty string for scanned PDFs (no OCR fallback). The endpoint correctly 400s with 'Try an image instead' — good UX. Consider auto-fallback to the image/vision pipeline for scanned PDFs.",
+    "The /orders/{id}/export endpoint accepts format alias 'excel' but the download filename extension is 'xlsx' — good. Frontend uses testid 'export-excel-button' (not 'export-xlsx-button'). Note this for future automated tests.",
+    "Whisper via OpenAISpeechToText correctly uses tempfile with cleanup. mp3/m4a/wav/ogg/webm all accepted. Confirmed with edge-tts synthesized Italian audio that transcript comes back and extracts line items."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter17_ingestion_export.py (NEW — 8 tests: text/PDF/xlsx/image/audio ingestion + order edit-persist + validate + export JSON/CSV/XLSX/PDF + export-profile lifecycle)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 in test_iter17_ingestion_export.py, executed in ~62s including real Claude + Whisper calls)",
+    "frontend": "100% — text ingestion, AI extraction, order review, edit, save, reload-persist, CSV export download, approve, ERP setup page all verified"
+  },
+  "test_credentials": "demo@ordia.app / demo123 (per /app/memory/test_credentials.md).",
+  "seed_data_creation": "Created ~6-8 real orders on demo account (each test creates a fresh order via /orders/extract). Backend test file has a session-scoped autouse cleanup fixture that DELETEs every order it created at the end of the run — so no accumulation. One TEST_iter17_profile export-profile created and deleted within the test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "For iter17 ingestion tests: run with `python -m pytest tests/test_iter17_ingestion_export.py -n 0 -v` (pytest.ini forces xdist workers; audio test uses asyncio.run() so must run serially — do NOT let it share a scope with other async tests). Endpoints exercised & verified: POST /auth/login 200, GET /products 200, POST /orders/extract 200 (source_type=text, and file with .pdf/.xlsx/.png/.mp3), GET /orders/{id} 200, PUT /orders/{id} 200, POST /orders/{id}/validate 200, GET /orders/{id}/export?format={json,csv,xlsx,pdf} 200 with correct content-types, GET|POST|DELETE /export-profiles 200, GET /orders/{id}/export-profile/{pid} 200. Frontend testids confirmed working: channel-{text,whatsapp,email,pdf,excel,csv,image,scan,audio}, order-text-input, extract-order-button, customer-name-input, delivery-date-input, line-item-*, qty-input-*, unit-input-*, remove-item-*, duplicate-item-*, save-order-button, export-menu-button, export-{pdf,excel,csv,json}-button, validate-order-button. NOTE the frontend uses 'excel' (not 'xlsx') as the data-testid suffix; backend accepts both.",
+  "rca of the issue": "N/A — no bugs found in this pass. All 5 ingestion formats + full order review + all 4 export formats + AI-authored export profiles all work end-to-end."
+}
