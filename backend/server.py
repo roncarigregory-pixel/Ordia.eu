@@ -351,9 +351,148 @@ async def import_products(file: UploadFile = File(...), user: dict = Depends(get
         inserted += 1
     return {"inserted": inserted}
 
+
 # ---------------------------------------------------------------------------
-# Ingestion layer
+# AI catalog import — upload ANY file (CSV/Excel/PDF/photo), AI maps products
 # ---------------------------------------------------------------------------
+CATALOG_EXTRACTION_SYSTEM = """You are a product-catalog parser for a B2B wholesale distributor.
+You receive a supplier price list / catalog in ANY layout (a table, a messy export, a PDF or a photo).
+Extract EVERY distinct product you can find and return STRICT JSON:
+{
+  "products": [
+    {
+      "name": string,            // clean product name (required)
+      "sku": string | null,      // product/article code if present
+      "price": number,           // unit price as a number (0 if unknown)
+      "unit": string | null,     // e.g. "kg", "cassa", "pz", "lt"
+      "pack_size": string | null,// e.g. "1 cassa = 12 x 400g" if present
+      "category": string | null, // product category if inferable
+      "aliases": [string]        // 1-3 short alternative names/spellings a customer might use
+    }
+  ]
+}
+Rules:
+- Parse numbers with comma or dot decimals correctly (e.g. "12,50" -> 12.5).
+- Ignore headers, totals, page numbers and non-product rows.
+- Never invent products that are not in the source.
+- If nothing looks like a product, return {"products": []}.
+"""
+
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".heic", ".heif")
+
+
+async def run_catalog_extraction(source_text: Optional[str], image_b64: Optional[str]) -> list:
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"catalog-{uuid.uuid4()}",
+        system_message=CATALOG_EXTRACTION_SYSTEM,
+    ).with_model("anthropic", "claude-sonnet-4-6")
+    if source_text:
+        prompt = f"SUPPLIER CATALOG CONTENT:\n{source_text}\n\nExtract the product catalog now."
+    else:
+        prompt = "The supplier catalog is in the attached image. Extract the product catalog now."
+    file_contents = [ImageContent(image_base64=image_b64)] if image_b64 else None
+    response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
+    text = response.strip() if isinstance(response, str) else str(response)
+    if text.startswith("```"):
+        text = text.split("```", 2)[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip().rstrip("`").strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        data = json.loads(text[start:end + 1]) if start != -1 and end != -1 else {"products": []}
+    out = []
+    for p in data.get("products", []):
+        name = str(p.get("name") or "").strip()
+        if not name or name.lower() == "nan":
+            continue
+        try:
+            price = float(p.get("price") or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        aliases = [str(a).strip() for a in (p.get("aliases") or []) if str(a).strip()][:5]
+        out.append({
+            "name": name,
+            "sku": str(p.get("sku") or "").strip(),
+            "price": price,
+            "unit": str(p.get("unit") or "unità").strip() or "unità",
+            "pack_size": str(p.get("pack_size") or "").strip(),
+            "category": str(p.get("category") or "General").strip() or "General",
+            "aliases": aliases,
+        })
+    return out
+
+
+@api.post("/products/import-ai")
+async def import_products_ai_preview(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Preview step: upload ANY file (CSV/Excel/PDF/photo) and let the AI map it
+    to a product list. Nothing is saved yet — returns products for confirmation."""
+    content = await file.read()
+    fname = (file.filename or "").lower()
+    source_text, image_b64 = None, None
+    if fname.endswith(IMAGE_EXTS):
+        image_b64 = base64.b64encode(content).decode("utf-8")
+    elif fname.endswith(".pdf"):
+        txt = _extract_pdf_text(content)
+        if txt.strip():
+            source_text = txt
+        else:
+            raise HTTPException(status_code=400, detail="Questo PDF sembra scansionato (senza testo). Caricalo come foto/immagine.")
+    elif fname.endswith((".csv", ".xlsx", ".xls")):
+        try:
+            df = _read_tabular(content, file.filename)
+            source_text = df.to_csv(index=False)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Impossibile leggere il file. Prova CSV, Excel, PDF o una foto.")
+    else:
+        raise HTTPException(status_code=400, detail="Formato non supportato. Carica CSV, Excel, PDF o una foto.")
+
+    try:
+        products = await run_catalog_extraction(source_text, image_b64)
+    except Exception as e:
+        logger.error(f"AI catalog import failed: {e}")
+        raise HTTPException(status_code=502, detail="L'AI non è riuscita a leggere il catalogo. Riprova tra poco.")
+    return {"count": len(products), "products": products}
+
+
+class CatalogConfirm(BaseModel):
+    products: List[dict]
+
+
+@api.post("/products/import-ai/confirm")
+async def import_products_ai_confirm(body: CatalogConfirm, user: dict = Depends(get_current_user)):
+    """Confirm step: bulk-insert the reviewed products. Skips exact-name duplicates."""
+    existing = await db.products.find({"company_id": user["company_id"]}, {"_id": 0, "name": 1}).to_list(20000)
+    existing_names = {(p.get("name") or "").strip().lower() for p in existing}
+    docs, skipped = [], 0
+    for p in body.products:
+        name = str(p.get("name") or "").strip()
+        if not name:
+            continue
+        if name.lower() in existing_names:
+            skipped += 1
+            continue
+        existing_names.add(name.lower())
+        try:
+            price = float(p.get("price") or 0)
+        except (ValueError, TypeError):
+            price = 0.0
+        docs.append({
+            "id": str(uuid.uuid4()), "company_id": user["company_id"], "name": name,
+            "sku": str(p.get("sku") or "").strip(),
+            "category": str(p.get("category") or "General").strip() or "General",
+            "unit": str(p.get("unit") or "unità").strip() or "unità",
+            "pack_size": str(p.get("pack_size") or "").strip(),
+            "price": price,
+            "aliases": [str(a).strip() for a in (p.get("aliases") or []) if str(a).strip()],
+            "created_at": now_iso(),
+        })
+    if docs:
+        await db.products.insert_many(docs)
+    return {"inserted": len(docs), "skipped": skipped}
 def _read_tabular(content: bytes, filename: str) -> pd.DataFrame:
     name = (filename or "").lower()
     if name.endswith(".csv"):
