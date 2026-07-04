@@ -1058,25 +1058,132 @@ async def global_search(q: str = "", user: dict = Depends(get_current_user)):
     c_hits = [c for c in customers if ql in c["name"].lower()][:6]
     return {"orders": o_hits, "products": p_hits, "customers": c_hits}
 
+def _match_catalog_product(query: str, by_sku: dict, prods: List[dict]):
+    """Match an imported product string to a catalog product: SKU, exact name, then contains."""
+    key = (query or "").strip()
+    if not key:
+        return None
+    kl = key.lower()
+    if kl in by_sku:
+        return by_sku[kl]
+    for p in prods:
+        if (p.get("name") or "").strip().lower() == kl:
+            return p
+    for p in prods:
+        nl = (p.get("name") or "").lower()
+        if nl and (kl in nl or nl in kl):
+            return p
+    return None
+
 @api.get("/customers")
 async def list_customers(user: dict = Depends(get_current_user)):
-    orders = await db.orders.find({"company_id": user["company_id"]}, {"_id": 0}).to_list(500)
-    return _aggregate_customers(orders)
+    cid = user["company_id"]
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).to_list(500)
+    result = _aggregate_customers(orders)
+    by_name = {c["name"]: c for c in result}
+    profiles = await db.customer_profiles.find({"company_id": cid}, {"_id": 0}).to_list(2000)
+    for pr in profiles:
+        nm = pr["name"]
+        fav = [x.get("name") for x in pr.get("products", []) if x.get("name")][:3]
+        if nm in by_name:
+            by_name[nm]["has_profile"] = True
+            if not by_name[nm].get("favorite_products"):
+                by_name[nm]["favorite_products"] = fav
+        else:
+            result.append({"name": nm, "orders": 0, "volume": 0.0, "last_order": None,
+                           "favorite_products": fav, "has_profile": True})
+    result.sort(key=lambda x: (x.get("last_order") or "", x["name"]), reverse=True)
+    return result
 
 @api.get("/customers/{name}")
 async def customer_detail(name: str, user: dict = Depends(get_current_user)):
-    orders = await db.orders.find({"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    cid = user["company_id"]
+    orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
     mine = [o for o in orders if (o.get("customer_name") or "Sconosciuto") == name]
-    if not mine:
+    profile = await db.customer_profiles.find_one({"company_id": cid, "name": name}, {"_id": 0})
+    if not mine and not profile:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
-    agg = _aggregate_customers(mine)[0]
+
+    if mine:
+        agg = _aggregate_customers(mine)[0]
+    else:
+        agg = {"name": name, "orders": 0, "volume": 0.0, "last_order": None, "favorite_products": []}
+    if profile:
+        agg["has_profile"] = True
+        if not agg.get("favorite_products"):
+            agg["favorite_products"] = [x.get("name") for x in profile.get("products", []) if x.get("name")][:3]
+
     insights = []
     if agg["orders"] >= 2:
         insights.append(f"Cliente ricorrente con {agg['orders']} ordini per €{agg['volume']:.2f} totali.")
+    if profile and agg["orders"] == 0:
+        insights.append(f"Cliente importato con {len(profile.get('products', []))} prodotti abituali. Pronto per il riordino.")
     if agg["favorite_products"]:
         insights.append(f"Ordina spesso: {', '.join(agg['favorite_products'])}.")
     insights.append("Suggerimento: proponi un riordino dei prodotti abituali.")
     return {"customer": agg, "orders": mine, "insights": insights}
+
+@api.post("/customers/import")
+async def import_customers(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Import customers and their habitual products from CSV/Excel (long format:
+    one row per customer-product). Flexible headers (IT/EN). Products are matched
+    to the catalog by SKU or name. Enables 1-click reorder without prior history."""
+    cid = user["company_id"]
+    content = await file.read()
+    df = _read_tabular(content, file.filename)
+    cols = {str(c).lower().strip(): c for c in df.columns}
+
+    def col(*names):
+        for n in names:
+            if n in cols:
+                return cols[n]
+        return None
+    c_cust = col("cliente", "customer", "nome", "name", "ragione sociale")
+    c_prod = col("prodotto", "product", "articolo", "item", "sku", "descrizione")
+    c_qty = col("quantità", "quantita", "qty", "quantity", "q.tà", "qta")
+    if not c_cust or not c_prod:
+        raise HTTPException(status_code=400, detail="Colonne richieste mancanti: servono almeno 'cliente' e 'prodotto' (o 'sku').")
+
+    prods = await db.products.find({"company_id": cid}, {"_id": 0}).to_list(2000)
+    by_sku = {(p.get("sku") or "").strip().lower(): p for p in prods if p.get("sku")}
+
+    grouped = {}
+    unmatched = []
+    for _, row in df.iterrows():
+        cust = str(row.get(c_cust, "")).strip()
+        prod = str(row.get(c_prod, "")).strip()
+        if not cust or cust.lower() == "nan" or not prod or prod.lower() == "nan":
+            continue
+        qty = 1.0
+        if c_qty is not None:
+            try:
+                qty = float(str(row.get(c_qty, 1)).replace(",", ".") or 1)
+            except (ValueError, TypeError):
+                qty = 1.0
+        p = _match_catalog_product(prod, by_sku, prods)
+        if not p:
+            unmatched.append({"customer": cust, "product": prod})
+            continue
+        grouped.setdefault(cust, {})[p["id"]] = {
+            "product_id": p["id"], "sku": p.get("sku"), "name": p.get("name"),
+            "unit": p.get("unit"), "default_qty": qty,
+        }
+
+    customers_upserted = 0
+    products_linked = 0
+    for cust, pmap in grouped.items():
+        items = list(pmap.values())
+        products_linked += len(items)
+        await db.customer_profiles.update_one(
+            {"company_id": cid, "name": cust},
+            {"$set": {"products": items, "updated_at": now_iso()},
+             "$setOnInsert": {"id": str(uuid.uuid4()), "company_id": cid, "name": cust, "created_at": now_iso()}},
+            upsert=True,
+        )
+        customers_upserted += 1
+
+    return {"customers": customers_upserted, "products_linked": products_linked,
+            "unmatched": unmatched[:50], "unmatched_count": len(unmatched)}
 
 @api.post("/customers/{name}/reorder")
 async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
@@ -1085,7 +1192,8 @@ async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
     cid = user["company_id"]
     orders = await db.orders.find({"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
     mine = [o for o in orders if (o.get("customer_name") or "Sconosciuto") == name]
-    if not mine:
+    has_profile = await db.customer_profiles.count_documents({"company_id": cid, "name": name}) > 0
+    if not mine and not has_profile:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
 
     freq, last_qty, last_raw = {}, {}, {}
@@ -1098,8 +1206,22 @@ async def reorder_customer(name: str, user: dict = Depends(get_current_user)):
             if pid not in last_qty:
                 last_qty[pid] = i.get("quantity", 1)
                 last_raw[pid] = i.get("raw_text") or i.get("matched_name")
+
+    # Fall back to the imported customer profile when there is no order history.
+    profile_only = False
     if not freq:
-        raise HTTPException(status_code=400, detail="Nessun prodotto abituale nello storico di questo cliente.")
+        profile = await db.customer_profiles.find_one({"company_id": cid, "name": name}, {"_id": 0})
+        if profile:
+            for idx, it in enumerate(profile.get("products", [])):
+                pid = it.get("product_id")
+                if not pid:
+                    continue
+                freq[pid] = len(profile["products"]) - idx  # preserve import order
+                last_qty[pid] = it.get("default_qty", 1)
+                last_raw[pid] = it.get("name")
+            profile_only = True
+    if not freq:
+        raise HTTPException(status_code=400, detail="Nessun prodotto abituale: importa i prodotti del cliente o crea prima un ordine.")
 
     prods = {p["id"]: p for p in await db.products.find({"company_id": cid}, {"_id": 0}).to_list(2000)}
     ranked = sorted(freq.items(), key=lambda x: -x[1])

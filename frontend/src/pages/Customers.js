@@ -1,17 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Users, ArrowUpRight } from "lucide-react";
+import { Search, Users, ArrowUpRight, Upload, Loader2 } from "lucide-react";
 
 export default function Customers() {
   const [customers, setCustomers] = useState(null);
   const [q, setQ] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadCustomers = () =>
     api.get("/customers").then(({ data }) => setCustomers(data)).catch(() => setCustomers([]));
-  }, []);
+
+  useEffect(() => { loadCustomers(); }, []);
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/customers/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success(`${data.customers} clienti importati · ${data.products_linked} prodotti abbinati` +
+        (data.unmatched_count ? ` · ${data.unmatched_count} righe non abbinate` : ""));
+      await loadCustomers();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Import non riuscito. Controlla il formato del file.");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
 
   const filtered = useMemo(
     () => (customers || []).filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase())),
@@ -20,9 +43,31 @@ export default function Customers() {
 
   return (
     <div className="animate-fade-up">
-      <div className="mb-6">
-        <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Clienti</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Storico ordini, volumi e prodotti abituali per ogni cliente.</p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">Clienti</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Storico ordini, volumi e prodotti abituali per ogni cliente.</p>
+        </div>
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={handleImport}
+            className="hidden"
+            data-testid="import-customers-input"
+          />
+          <button
+            data-testid="import-customers-button"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-2 rounded-lg border border-input bg-white px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            {importing ? "Importazione…" : "Importa clienti"}
+          </button>
+          <p className="mt-1.5 text-right text-xs text-muted-foreground">CSV/Excel · colonne: cliente, prodotto, quantità</p>
+        </div>
       </div>
 
       <div className="relative max-w-xs mb-4">

@@ -198,6 +198,15 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 - **Verificato E2E** (curl + UI): storico 2 ordini → riordino = 4 righe (quantità dell'ultimo ordine) a 100%, totale €765.70. Dati di test ripuliti.
 - Prossimo naturale: import clienti + prodotti abituali da CSV/Excel per popolare lo storico anche senza ordini pregressi.
 
+## ✅ Import clienti + prodotti abituali (CSV/Excel) (2026-07-04)
+- **Nuova collezione** `customer_profiles` {company_id, name, products:[{product_id,sku,name,unit,default_qty}]}.
+- **Backend** `POST /api/customers/import` (multipart): parsa CSV/Excel formato lungo (1 riga per cliente-prodotto), header flessibili IT/EN (cliente/prodotto/quantità), abbina i prodotti al catalogo per SKU o nome, upsert dei profili per (company,name). Ritorna {customers, products_linked, unmatched}. `GET /customers` e `/customers/{name}` ora includono i clienti solo-profilo (0 ordini). `POST /customers/{name}/reorder` usa il profilo come **fallback** quando non c'è storico ordini → riordino funziona anche per clienti nuovi.
+- **Frontend** `Customers.js`: pulsante "Importa clienti" (data-testid `import-customers-button`) + input file, toast con esito, hint colonne. Clienti importati appaiono in lista con "Abituali: …" e hanno il pulsante Riordina in dettaglio.
+- **Verificato E2E** (curl + UI): import 2 clienti (4 prodotti abbinati, 2 righe non abbinate segnalate) → clienti in lista → riordino da profilo (0 ordini) crea ordine con i prodotti abituali. Dati di test ripuliti.
+
+## ✅ Video tutorial NARRATO v3 — con Import + Riordino (2026-07-04)
+- Rigenerati `ordia-tutorial-16x9.mp4` e `9x16.mp4` (~80s) con 11 scene: canali → estrazione → revisione (nome cliente + riga incerta) → Approva → **Import clienti** → **Riordino 1-click** → outro. Voce coral (OpenAI TTS) + musichetta + cursore/anello luminoso. Script rigenerabili in `/tmp` (nota: /tmp e i pacchetti di sistema ffmpeg/chromium sono EFFIMERI tra i restart del pod; i .mp4 in /app/frontend/public PERSISTONO).
+
 
 ## 🔜 Prossimo — P2 (backlog)
 - **Connettori ERP**: SAP, Odoo, Business Central sopra l'export generico.
