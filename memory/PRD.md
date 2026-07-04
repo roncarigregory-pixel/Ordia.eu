@@ -207,10 +207,11 @@ Nuovo braccio per ERP **desktop senza API né DOM** (Danea/Mexal/TeamSystem desk
 Vedi `/app/memory/test_credentials.md` — demo@ordia.app / demo123.
 
 ## ✅ Video tutorial + Onboarding montato + Login attivo + Spazio pulito (2026-07-04)
-- **Video tutorial reale generato** via Playwright screen-recording + ffmpeg (didascalie IT incorporate durante la registrazione):
-  - `frontend/public/ordia-tutorial-16x9.mp4` (1280×720, 58s) — desktop/landing/YouTube.
-  - `frontend/public/ordia-tutorial-9x16.mp4` (720×1280) — **registrazione nativa mobile** per social (IG/TikTok/WhatsApp Status).
-  - Script: `/tmp/record_tutorial.py` (16:9) e `/tmp/record_tutorial_mobile.py` (9:16). URL pubblici: `{BASE}/ordia-tutorial-16x9.mp4` e `.../ordia-tutorial-9x16.mp4`.
+- **Video tutorial reale generato** via Playwright screen-recording + ffmpeg (v2 NARRATO, 2026-07-04):
+  - `frontend/public/ordia-tutorial-16x9.mp4` (1280×720, ~62s) e `ordia-tutorial-9x16.mp4` (720×1280, nativo mobile).
+  - **Voce femminile italiana** (OpenAI TTS `tts-1-hd`, voce "coral", via Emergent LLM Key) + **musichetta soft** originale generata (numpy, CC-free, mixata a volume basso).
+  - **Indicatori di click moderni**: cursore SVG animato + anello luminoso indigo pulsante sugli elementi (stile Stripe/Linear); mostra i canali (WhatsApp/Email/Foto/Testo), il campo **nome cliente**, la riga a **bassa confidenza** evidenziata, e il tasto Approva.
+  - Sincronia voce↔video via offset misurati (`/tmp/vo/offsets*.json`). Script: `/tmp/record_v2.py`, `/tmp/record_v2_mobile.py`, `/tmp/gen_voice.py`, `/tmp/gen_music.py`, `/tmp/compose_video.py`. URL pubblici: `{BASE}/ordia-tutorial-16x9.mp4` e `.../9x16.mp4`.
 - **Onboarding COLLEGATO**: `components/Onboarding.js` esisteva ma non era mai montato. Ora `AppShell.js` avvolge il contenuto in `<OnboardingProvider>` → welcome modal (primo accesso), pulsante aiuto flottante, tour guidato spotlight (5 passi), modal video, FAQ. `ORDIA_TUTORIAL_VIDEO` ora `type:"mp4", src:"/ordia-tutorial-16x9.mp4"` (era placeholder).
 - **Video in Home**: sezione "Ordia in 90 secondi" in fondo a `Dashboard.js` (player 16:9 con poster), oltre al modal onboarding.
 - **Login ATTIVATO** (`REACT_APP_PILOT_MODE=false`): niente più auto-login demo; /app → /login. Auth JWT già pronta (Login/Register esistenti). La pagina login mostra l'hint credenziali demo.
