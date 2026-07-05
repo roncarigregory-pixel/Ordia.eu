@@ -165,17 +165,33 @@ export default function WhatsAppSetup() {
       {step === 1 && (
         <div className="rounded-md border border-border bg-white p-6 space-y-4">
           <h2 className="font-display text-lg font-bold tracking-tight">{t("Inserisci le credenziali Meta")}</h2>
+
+          <div data-testid="wa-where-guide" className="rounded-md border border-blue-200 bg-blue-50/60 p-4">
+            <p className="text-sm font-semibold text-blue-900">{t("Dove trovo questi valori? (percorso più rapido)")}</p>
+            <ol className="mt-2 space-y-2 text-sm text-blue-900/90 list-decimal pl-5">
+              <li>
+                {t("Apri la pagina \"Configurazione API\" della tua app su Meta for Developers: lì trovi già insieme Phone Number ID, WhatsApp Business Account ID e un token temporaneo (24h) per una prova immediata.")}
+                <a href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer" className="ml-1 font-medium text-blue-700 underline underline-offset-2" data-testid="wa-link-devconsole">{t("Apri Meta for Developers ↗")}</a>
+              </li>
+              <li>
+                {t("Per l'uso continuativo genera un token permanente da un Utente di sistema in Meta Business Settings, con gli scope whatsapp_business_messaging + whatsapp_business_management e l'accesso alla tua WABA.")}
+                <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer" className="ml-1 font-medium text-blue-700 underline underline-offset-2" data-testid="wa-link-systemuser">{t("Apri Utenti di sistema ↗")}</a>
+              </li>
+            </ol>
+            <p className="mt-2 text-xs text-blue-800/80">{t("Suggerimento: usa il token temporaneo per la prima verifica, poi sostituiscilo con quello permanente per non doverlo rifare ogni giorno.")}</p>
+          </div>
+
           <Field label={t("Etichetta")} hint={t("Un nome per riconoscere questo numero.")} testid="wa-label">
             <input value={form.label} onChange={set("label")} className={inputCls} />
           </Field>
-          <Field label={t("Access Token permanente")} hint={t("System User → Genera token, con scope whatsapp_business_messaging + management.")} testid="wa-token">
+          <Field label={t("Access Token")} hint={t("Temporaneo (24h) dalla Configurazione API per provare, oppure permanente dal System User per l'uso continuativo. Scope: whatsapp_business_messaging + management.")} testid="wa-token">
             <input value={form.access_token} onChange={set("access_token")} placeholder="EAAG…" className={cn(inputCls, "font-mono")} />
           </Field>
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Phone Number ID" hint={t("WhatsApp Manager → Numeri di telefono.")} testid="wa-phone-id">
+            <Field label="Phone Number ID" hint={t("Configurazione API → riquadro del numero, oppure WhatsApp Manager → Numeri di telefono.")} testid="wa-phone-id">
               <input value={form.phone_number_id} onChange={set("phone_number_id")} placeholder="123456789012345" className={cn(inputCls, "font-mono")} />
             </Field>
-            <Field label={t("WhatsApp Business Account ID")} hint={t("Impostazioni Business → Account WhatsApp.")} testid="wa-waba-id">
+            <Field label={t("WhatsApp Business Account ID")} hint={t("Configurazione API → \"WhatsApp Business Account ID\", oppure Impostazioni Business → Account WhatsApp.")} testid="wa-waba-id">
               <input value={form.waba_id} onChange={set("waba_id")} placeholder="987654321098765" className={cn(inputCls, "font-mono")} />
             </Field>
           </div>

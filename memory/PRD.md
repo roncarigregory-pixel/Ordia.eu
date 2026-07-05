@@ -343,3 +343,11 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 ### Feature 2 — OCR PDF scansionati
 - **Backend (server.py):** dep `pymupdf`. `_pdf_to_images()` renderizza pagine (max 5, 170dpi) → PNG b64; `_image_contents()` supporta lista immagini per Claude Vision. PDF senza testo ora fa fallback OCR invece di errore, in: extract_order, import-ai catalogo, WhatsApp inbound.
 - Verificato: testing agent iteration_18 (4/4 backend pytest incl. OCR reale + UI Playwright). retest_needed=False. Demo ripristinato pulito. ⚠️ REDEPLOY per produzione.
+
+
+
+## 2026-07-05 (11) — WhatsApp: onboarding self-service più facile per il cliente
+- **Decisione:** NIENTE Embedded Signup/Meta BSP (Ordia non è BSP approvato; il cliente gestisce Meta in autonomia). Obiettivo: rendere l'inserimento manuale delle credenziali Meta semplicissimo per il cliente.
+- **Frontend (WhatsAppSetup.js, step Credenziali):** aggiunta guida "Dove trovo questi valori? (percorso più rapido)" con 2 passaggi numerati e link diretti (Meta for Developers / Utenti di sistema), tip token temporaneo→permanente, e hint per-campo più chiari (Configurazione API mostra Phone Number ID + WABA ID + token temporaneo insieme). i18n IT+EN.
+- Verificato via screenshot (guida + link + campi renderizzano correttamente). Solo UI/testo, nessun cambio backend. ⚠️ REDEPLOY per produzione.
+- **Refactoring server.py/OrderReview.js:** NON eseguito (rimane P2, rischio regressioni vicino alla presentazione; da fare dopo il go-live cliente).

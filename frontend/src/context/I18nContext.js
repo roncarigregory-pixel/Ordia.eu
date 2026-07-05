@@ -243,6 +243,17 @@ const UI = {
 // Italian-source → English phrase map. For lang=it the Italian key is returned
 // as-is (identity), so only English translations need to be maintained here.
 const EN = {
+  // WhatsApp setup — "where to find" guide
+  "Dove trovo questi valori? (percorso più rapido)": "Where do I find these values? (fastest path)",
+  "Apri la pagina \"Configurazione API\" della tua app su Meta for Developers: lì trovi già insieme Phone Number ID, WhatsApp Business Account ID e un token temporaneo (24h) per una prova immediata.": "Open the \"API Setup\" page of your app on Meta for Developers: there you'll find Phone Number ID, WhatsApp Business Account ID and a temporary (24h) token together for an instant test.",
+  "Apri Meta for Developers ↗": "Open Meta for Developers ↗",
+  "Per l'uso continuativo genera un token permanente da un Utente di sistema in Meta Business Settings, con gli scope whatsapp_business_messaging + whatsapp_business_management e l'accesso alla tua WABA.": "For ongoing use, generate a permanent token from a System User in Meta Business Settings, with the whatsapp_business_messaging + whatsapp_business_management scopes and access to your WABA.",
+  "Apri Utenti di sistema ↗": "Open System Users ↗",
+  "Suggerimento: usa il token temporaneo per la prima verifica, poi sostituiscilo con quello permanente per non doverlo rifare ogni giorno.": "Tip: use the temporary token for the first check, then replace it with the permanent one so you don't have to redo it every day.",
+  "Access Token": "Access Token",
+  "Temporaneo (24h) dalla Configurazione API per provare, oppure permanente dal System User per l'uso continuativo. Scope: whatsapp_business_messaging + management.": "Temporary (24h) from API Setup to test, or permanent from a System User for ongoing use. Scopes: whatsapp_business_messaging + management.",
+  "Configurazione API → riquadro del numero, oppure WhatsApp Manager → Numeri di telefono.": "API Setup → number panel, or WhatsApp Manager → Phone numbers.",
+  "Configurazione API → \"WhatsApp Business Account ID\", oppure Impostazioni Business → Account WhatsApp.": "API Setup → \"WhatsApp Business Account ID\", or Business Settings → WhatsApp Accounts.",
   // Catalog — ERP sync
   "Sincronizzazione automatica attivata.": "Automatic sync enabled.",
   "Sincronizzazione automatica disattivata.": "Automatic sync disabled.",
