@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useI18n, LanguageToggle } from "@/context/I18nContext";
+import { EarlyAccessForm } from "@/components/EarlyAccessForm";
 import {
   Sparkles, ArrowRight, PlayCircle, Clock, ShieldCheck, Inbox, Plug, Zap,
   MessageCircle, Mail, FileText, Sheet, Camera, Mic, CheckCircle2, Cpu, Send,
@@ -211,6 +212,20 @@ export default function Landing() {
             </div>
           </motion.div>
         </div>
+      </section>
+
+      {/* Early access — waitlist / lead capture */}
+      <section id="early-access" className="scroll-mt-20 px-5 py-20">
+        <motion.div {...fade()} className="mx-auto max-w-xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-ai/20 bg-ai-soft/60 px-3 py-1 text-xs font-medium text-ai">
+            <Sparkles size={13} /> {t("Accesso anticipato")}
+          </div>
+          <h2 className="mt-4 font-display text-3xl font-bold tracking-tight sm:text-4xl">{t("Sii tra i primi a usare Ordia")}</h2>
+          <p className="mx-auto mt-3 max-w-md text-muted-foreground">{t("Lascia la tua email: ti avvisiamo quando è pronto per te e ti diamo accesso prioritario.")}</p>
+          <div className="mt-8">
+            <EarlyAccessForm onRegister={goToRegister} />
+          </div>
+        </motion.div>
       </section>
 
       {/* Final CTA */}

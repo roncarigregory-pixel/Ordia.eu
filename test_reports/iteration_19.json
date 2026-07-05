@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 19 — Confirmation pass for the GLOBAL-FIRST early-access waitlist / lead capture feature. Backend: 9/9 pytest tests passed (POST /api/leads happy path + missing-consent 400 + invalid-email 400, CF-IPCountry header, phone-prefix fallback, idempotent+non-destructive dedupe, unauthenticated GET 401, admin GET 200 with UTC-ISO created_at sorted desc). Frontend Playwright: landing page early-access form works end-to-end in EN, submit-without-consent blocked with toast, valid submit shows success state, 'Create your account and try now' CTA navigates to /register. Admin: login -> nav-leads sidebar -> /app/leads table with real leads, testids present, EN/IT localization confirmed (no raw i18n keys visible). Demo DB cleaned back to 0 leads.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter19_leads.py",
+    "/app/test_reports/pytest/iter19.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py POST /api/leads (line 561-597) correctly enforces (a) rate limit `leads:<ip>` 20/60s, (b) explicit consent check, (c) EMAIL_RE validation, (d) UUID id + UTC now_iso timestamps, (e) idempotent dedupe with NON-destructive $set (only overwrites when body has non-empty value — verified). Country resolution priority is: CF-IPCountry header > phone-prefix fallback. Confirmed via localhost:8001 direct hit.",
+    "IMPORTANT INFRA NOTE: The preview ingress (Cloudflare/K8s) STRIPS inbound `CF-IPCountry` headers to prevent client spoofing — this is standard behavior. Only the real Cloudflare edge in production sets this header. So end-to-end CF-IPCountry testing via the public preview URL will always fall through to phone-prefix. Backend code path is correct and was validated by hitting http://localhost:8001/api/leads directly (country=DE stored). No fix needed.",
+    "Resend email send is best-effort in `_send_lead_email` (wrapped in try/except, non-blocking asyncio.create_task). Correct.",
+    "GET /api/leads returns full lead documents including phone/country/company. If leads ever get shared with less-privileged staff, consider PII scrubbing or opt-in field selection. Currently protected by require_privileged (owner/admin only) — acceptable for MVP.",
+    "server.py is now 3258 lines (was 3153 in iter18, +100). Add lead-capture module to the split-out backlog: `/app/backend/leads.py` or `/app/backend/routers/marketing.py`.",
+    "Frontend EarlyAccessForm.jsx: consent label uses `t('consent.marketing')` — good pattern (localized). Form is defensively minimal and only sends what user provided. `source` attribution derived from utm_source/ref/referrer — good for funnel analytics.",
+    "Leads.js UI: date formatted via `Intl.DateTimeFormat(lang === 'it' ? 'it-IT' : 'en-US')` — locale-aware, correct. Table has data-testid=`lead-row-{id}` per row for future automation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter19_leads.py (NEW — 9 tests, ~250 lines, includes module-scoped autouse cleanup deleting test_iter19_* + mario/lucia/hans dev seeds via direct Mongo)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests in test_iter19_leads.py, 3.77s)",
+    "frontend": "100% (landing form EN/IT, submit-without-consent blocked, valid submit success + navigate to /register, admin nav-leads -> /app/leads table with rows + leads-total localized)"
+  },
+  "test_credentials": "demo@ordia.app / demo123 (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "Test run created ~10 test leads (all prefixed test_iter19_* or test_ui_*). ALL cleaned up post-run via direct Mongo delete_many. Also purged the pre-existing dev seeds mario@example.com / lucia@example.com / hans@example.de as requested in the review. Final state: db.leads.count_documents({}) == 0. Verified pristine.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter19 focus: waitlist/lead capture. Endpoints: POST /api/leads (public, rate-limited 20/60s per IP), GET /api/leads (admin/owner only). Payload: {email, company_name?, phone?, consent: bool (must be true), locale?, source?}. Response: {ok:true, already:bool}. Country priority: CF-IPCountry header > phone-prefix fallback. IMPORTANT: Public preview ingress strips inbound CF-IPCountry — test that path via http://localhost:8001 direct. Frontend testids: language-toggle, lang-en, lang-it, early-access-form, early-access-email, early-access-company, early-access-phone (PhoneInput), early-access-consent, early-access-submit, early-access-success, early-access-to-register, nav-leads, leads-total, lead-row-{id}. Login flow requires Escape after login to dismiss welcome dialog (iter16 RCA still applies). i18n keys `consent.marketing` and `leads.total` are BOTH defined in EN + IT sections of I18nContext.js (verified rendered strings never leak raw keys). To re-run: cd /app/backend && python -m pytest tests/test_iter19_leads.py -n 0 -v.",
+  "rca of the issue": "No bugs found. During test development I hit two false-positive failures caused by MY test code that I fixed: (1) `admin_token` fixture originally called `session.post(login)` which caused the login endpoint's Set-Cookie: ordia_token to pollute the shared anonymous `session` fixture — this broke the 401-without-auth test. FIX: `admin_token` now uses a throw-away requests.Session() so the anonymous session stays cookieless. (2) The CF-IPCountry test hit the public preview URL and got country=IT (phone fallback) — root cause is Cloudflare/K8s ingress stripping inbound CF-* headers to prevent client spoofing. FIX: that specific test now hits http://localhost:8001 directly to exercise the backend logic — which correctly reads the header. This is standard infra behavior, not a code bug."
+}

@@ -496,6 +496,111 @@ async def import_products_ai_confirm(body: CatalogConfirm, user: dict = Depends(
     if docs:
         await db.products.insert_many(docs)
     return {"inserted": len(docs), "skipped": skipped}
+
+# ---------------------------------------------------------------------------
+# Waitlist / Early-access leads — GLOBAL-FIRST, GDPR-compliant lead capture.
+# Public endpoint (rate-limited). Stores UTC timestamps, detects country from
+# the edge (Cloudflare) with phone fallback, keeps locale for future i18n, and
+# requires explicit marketing consent. Currency-independent; no PII beyond what
+# the visitor submits. Email confirmation uses locale-aware templates.
+# ---------------------------------------------------------------------------
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+class LeadCreate(BaseModel):
+    email: str
+    company_name: Optional[str] = None
+    phone: Optional[str] = None          # E.164 international (e.g. +39333…)
+    consent: bool = False                # GDPR marketing consent (must be true)
+    locale: Optional[str] = None         # e.g. "en", "it" — for future i18n
+    source: Optional[str] = None         # utm / referrer for attribution
+
+LEAD_EMAILS = {
+    "en": {
+        "subject": "You're on the Ordia early-access list 🎉",
+        "html": lambda name: f"""<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+        <h2 style="color:#0f172a">Welcome{f', {name}' if name else ''} 👋</h2>
+        <p>Thanks for your interest in <b>Ordia</b> — AI order automation that turns WhatsApp, email, PDF and photo orders into clean orders, integrating with the ERP you already use.</p>
+        <p>You're on the early-access list. We'll reach out soon with your access.</p>
+        <p style="color:#64748b;font-size:13px">If you didn't request this, you can ignore this email.</p>
+        <p style="margin-top:24px">— The Ordia team</p></div>""",
+    },
+    "it": {
+        "subject": "Sei nella lista accesso anticipato di Ordia 🎉",
+        "html": lambda name: f"""<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+        <h2 style="color:#0f172a">Benvenuto{f', {name}' if name else ''} 👋</h2>
+        <p>Grazie per l'interesse verso <b>Ordia</b> — l'automazione ordini con AI che trasforma ordini WhatsApp, email, PDF e foto in ordini pronti, integrandosi al gestionale che usi già.</p>
+        <p>Sei nella lista di accesso anticipato. Ti contatteremo a breve con il tuo accesso.</p>
+        <p style="color:#64748b;font-size:13px">Se non hai richiesto tu questa iscrizione, puoi ignorare questa email.</p>
+        <p style="margin-top:24px">— Il team Ordia</p></div>""",
+    },
+}
+
+def _phone_country(phone: Optional[str]) -> Optional[str]:
+    # Best-effort: derive an ISO-ish hint from the international dialing prefix.
+    if not phone:
+        return None
+    prefixes = {"+39": "IT", "+1": "US", "+44": "GB", "+49": "DE", "+33": "FR",
+                "+34": "ES", "+41": "CH", "+43": "AT", "+31": "NL", "+351": "PT"}
+    for p, c in sorted(prefixes.items(), key=lambda kv: -len(kv[0])):
+        if phone.startswith(p):
+            return c
+    return None
+
+async def _send_lead_email(to_email: str, name: Optional[str], locale: str):
+    if not RESEND_API_KEY:
+        return
+    tpl = LEAD_EMAILS.get(locale) or LEAD_EMAILS["en"]
+    try:
+        await asyncio.to_thread(resend.Emails.send, {
+            "from": SENDER_EMAIL, "to": [to_email],
+            "subject": tpl["subject"], "html": tpl["html"](name),
+        })
+    except Exception as e:
+        logger.warning("Lead confirmation email failed: %s", e)
+
+@api.post("/leads")
+async def create_lead(body: LeadCreate, request: Request):
+    """Public early-access signup. GDPR: requires explicit consent."""
+    enforce_rate_limit(f"leads:{client_ip(request)}", max_req=20, window=60)
+    email = (body.email or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Inserisci un indirizzo email valido.")
+    if not body.consent:
+        raise HTTPException(status_code=400, detail="È necessario il consenso per procedere.")
+    locale = (body.locale or "en").lower()[:5]
+    country = (request.headers.get("CF-IPCountry") or _phone_country(body.phone) or "").upper() or None
+    now = now_iso()
+    existing = await db.leads.find_one({"email": email}, {"_id": 0, "id": 1})
+    if existing:
+        # Idempotent + non-destructive: only refresh fields the visitor actually provided.
+        upd = {"locale": locale, "consent": True, "consent_at": now, "updated_at": now}
+        if (body.company_name or "").strip():
+            upd["company_name"] = body.company_name.strip()
+        if (body.phone or "").strip():
+            upd["phone"] = body.phone.strip()
+        if country:
+            upd["country"] = country
+        await db.leads.update_one({"email": email}, {"$set": upd})
+        return {"ok": True, "already": True}
+    doc = {
+        "id": str(uuid.uuid4()), "email": email,
+        "company_name": (body.company_name or "").strip() or None,
+        "phone": (body.phone or "").strip() or None,
+        "country": country, "locale": locale,
+        "source": (body.source or "").strip()[:300] or None,
+        "consent": True, "consent_at": now,
+        "status": "new", "created_at": now, "updated_at": now,
+    }
+    await db.leads.insert_one(dict(doc))
+    doc.pop("_id", None)
+    asyncio.create_task(_send_lead_email(email, doc["company_name"], locale))
+    return {"ok": True, "already": False}
+
+@api.get("/leads")
+async def list_leads(user: dict = Depends(get_current_user)):
+    require_privileged(user)
+    leads = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return {"items": leads, "total": len(leads)}
 def _read_tabular(content: bytes, filename: str) -> pd.DataFrame:
     name = (filename or "").lower()
     if name.endswith(".csv"):
