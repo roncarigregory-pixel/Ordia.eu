@@ -88,7 +88,7 @@ export default function Catalog() {
       if (!data.count) {
         toast.error(t("Nessun prodotto trovato nel file. Prova con una foto più nitida o un altro file."));
       } else {
-        setPreview(data);
+        setPreview({ ...data, products: (data.products || []).map((p, idx) => ({ ...p, _rid: `p-${Date.now()}-${idx}` })) });
       }
     } catch (err) {
       toast.error(formatApiError(err));
@@ -269,7 +269,7 @@ export default function Catalog() {
           <p className="text-sm text-muted-foreground -mt-1">{t("Controlla e correggi se serve, poi salva. Puoi rimuovere le righe sbagliate.")}</p>
           <div className="max-h-[52vh] overflow-y-auto rounded-lg border border-border divide-y divide-border">
             {(preview?.products || []).map((p, i) => (
-              <div key={i} data-testid={`import-preview-row-${i}`} className="flex items-center gap-2 px-3 py-2">
+              <div key={p._rid || i} data-testid={`import-preview-row-${i}`} className="flex items-center gap-2 px-3 py-2">
                 <input value={p.name} onChange={(e) => updatePreviewRow(i, "name", e.target.value)} className="flex-1 min-w-0 rounded-md border border-input bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={t("Nome")} />
                 <input value={p.unit || ""} onChange={(e) => updatePreviewRow(i, "unit", e.target.value)} className="w-20 rounded-md border border-input bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={t("Unità")} />
                 <input type="number" step="0.01" value={p.price} onChange={(e) => updatePreviewRow(i, "price", parseFloat(e.target.value) || 0)} className="w-24 rounded-md border border-input bg-white px-2 py-1.5 text-right font-mono text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="€" />
