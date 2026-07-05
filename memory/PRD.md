@@ -16,6 +16,19 @@ UI e comunicazione con l'utente: **ITALIANO**. Benchmark UX: Stripe / Linear.
 Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-ready.
 
 ## ✅ Completato
+### 🧭 Onboarding guidato login→primo ordine (5 Lug 2026, iteration_23, 100% E2E pass)
+- **Checklist di onboarding live** (`components/OnboardingChecklist.jsx`, card in cima alla Dashboard): 5 step basati sullo stato REALE,
+  si aggiorna da solo e scompare quando i required sono completati (o su "Nascondi").
+  Step: 1) Completa profilo azienda (dialog rapido: nome, settore, gestionale → `PUT /company`), 2) Importa catalogo (CTA apre
+  `/app/catalog?import=1` → wizard auto-aperto), 3) WhatsApp Business (opzionale/saltabile), 4) Ordia Bridge (opzionale/saltabile),
+  5) Elabora il primo ordine (apre Nuovo Ordine). Progress bar + CTA "Vai" + "Salta" sugli opzionali.
+- **Backend** (`server.py`): `GET /onboarding/status` (calcola done per step: profile=nome+settore+gestionale, catalog=`catalog_imports`>0 o sync,
+  whatsapp=integrazione connessa, bridge=agente paired, first_order=ordine in needs_review/validated/exported),
+  `POST /onboarding/skip-step` (solo whatsapp/bridge, 400 sui required), `POST /onboarding/dismiss`. `CompanyUpdate` esteso con `sector`, `erp_name`.
+- **Pannello Aiuto**: aggiunto "Riprendi la configurazione" (`help-resume-onboarding`) che riporta alla checklist. Fix a11y (SheetDescription) e z-index help button.
+- **Nota**: seed catalogo (~25 prodotti) NON conta come "catalogo importato": serve un import/sync reale del cliente. Bridge testato via simulazione `POST /bridge/pair` (l'exe reale richiede PC Windows).
+
+
 ### 🚀 Onboarding P0 — Codice Bridge + Wizard Catalogo (5 Lug 2026, iteration_22, 100% pass)
 - **Codice di collegamento Bridge** (`bridge.py`, `BridgeSetup.js`): box evidente "Il tuo codice di accoppiamento" con
   codice grande, "Copia codice", QR, spiegazione ("collega il PC del gestionale al tuo account Ordia"), stato codice

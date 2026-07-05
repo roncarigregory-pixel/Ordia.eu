@@ -5,7 +5,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
@@ -196,7 +196,7 @@ export function OnboardingProvider({ children }) {
 
       {/* Floating help launcher — always available */}
       <button data-testid="onboarding-help-btn" onClick={openHelp} title={t("Guida & tour")}
-        className="fixed bottom-20 md:bottom-6 right-5 z-[70] flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105">
+        className="fixed bottom-20 md:bottom-6 right-5 z-[90] flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105">
         <HelpCircle size={22} />
       </button>
 
@@ -251,6 +251,7 @@ export function OnboardingProvider({ children }) {
         <SheetContent className="w-full sm:max-w-md overflow-y-auto" data-testid="onboarding-help-panel">
           <SheetHeader>
             <SheetTitle className="font-display text-xl tracking-tight flex items-center gap-2"><BookOpen size={18} /> {t("Guida")}</SheetTitle>
+            <SheetDescription className="sr-only">{t("Guida, video tutorial e domande frequenti per usare Ordia.")}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-2">
             <button data-testid="help-resume-onboarding" onClick={() => { setHelpOpen(false); navigate("/app"); }}
