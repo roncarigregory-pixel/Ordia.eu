@@ -318,3 +318,9 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - `OrderTimeline` (OrderReview.js): stepper sempre visibile Ricevuto → Confermato → Inviato → Consegnato, stati done(verde+check)/current(blu+ring)/pending(grigio). Avanza in base a order.status + delivery status.
 - Refactor: `DeliveryStatusPill` reso componente puro (prop `delivery`); stato `delivery` + polling (3s) sollevato in OrderReview e condiviso tra timeline e pill. i18n IT+EN.
 - Verificato E2E (UI: revisione→conferma→invio, timeline avanza). Compila pulito. ⚠️ REDEPLOY per produzione.
+
+
+
+## 2026-07-05 (8) — Mini-timeline compatta nella lista Ordini
+- `MiniTimeline` (Orders.js): mini-stepper a pallini+segmenti per riga nella nuova colonna "Avanzamento" (visibile ≥lg). Ricevuto → Confermato → Inviato → Consegnato, verde=completato / blu=in corso / grigio=da fare. Derivato da o.status + o.delivery_status. i18n key "Avanzamento".
+- Verificato via screenshot (6 ordini con stati misti: exported/ready/validated/needs_review renderizzano correttamente). ⚠️ REDEPLOY per produzione.

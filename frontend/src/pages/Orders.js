@@ -4,7 +4,38 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/context/I18nContext";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, ChevronRight, ChevronLeft } from "lucide-react";
+import { Plus, Search, ChevronRight, ChevronLeft, Check } from "lucide-react";
+
+// Mini stepper compatto per riga: Ricevuto → Confermato → Inviato → Consegnato
+function MiniTimeline({ status, delivered, t }) {
+  const confirmed = status === "validated" || status === "exported";
+  const sent = status === "exported";
+  const steps = [
+    { key: "received", done: status !== "processing", current: status === "processing" },
+    { key: "confirmed", done: confirmed, current: status === "needs_review" || status === "ready" },
+    { key: "sent", done: sent, current: status === "validated" },
+    { key: "delivered", done: !!delivered, current: sent && !delivered },
+  ];
+  return (
+    <div data-testid="order-mini-timeline" className="flex items-center" title={t("Ricevuto → Confermato → Inviato → Consegnato")}>
+      {steps.map((s, i) => (
+        <div key={s.key} className="flex items-center">
+          <span className={
+            "flex h-4 w-4 items-center justify-center rounded-full transition-colors " +
+            (s.done ? "bg-emerald-500 text-white"
+              : s.current ? "bg-ai text-white ring-2 ring-ai/20"
+              : "bg-slate-200 text-transparent")
+          }>
+            {s.done ? <Check size={10} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-white/70" />}
+          </span>
+          {i < steps.length - 1 && (
+            <div className={"mx-0.5 h-0.5 w-4 lg:w-6 rounded " + (s.done ? "bg-emerald-400" : "bg-slate-200")} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const FILTERS = [
   { key: "all", label: "Tutti" },
@@ -106,6 +137,7 @@ export default function Orders() {
                 <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden sm:table-cell">{t("Articoli")}</th>
                 <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden md:table-cell">{t("Sorgente")}</th>
                 <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Stato")}</th>
+                <th className="px-5 py-3 text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground hidden lg:table-cell">{t("Avanzamento")}</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -121,6 +153,7 @@ export default function Orders() {
                   <td className="px-5 py-3 text-muted-foreground font-mono hidden sm:table-cell">{o.line_items.length}</td>
                   <td className="px-5 py-3 text-muted-foreground hidden md:table-cell">{t(`ch.${o.source_type}`)}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
+                  <td className="px-5 py-3 hidden lg:table-cell"><MiniTimeline status={o.status} delivered={o.delivery_status === "delivered"} t={t} /></td>
                   <td className="px-5 py-3 text-right"><ChevronRight size={16} className="text-slate-300 inline" /></td>
                 </tr>
               ))}
