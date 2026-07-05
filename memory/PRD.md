@@ -331,3 +331,15 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - **Backend:** denormalizzato `delivery_status` sul documento ordine (solo job Bridge `live`, non `shadow`), aggiornato ad ogni transizione in bridge.py: enqueue→pending, claim→claimed, ack delivered→delivered, retry→pending, fail→failed. `list_orders` accetta param `delivery` (all|not_delivered|in_progress|delivered|failed).
 - **Frontend Orders.js:** secondo gruppo di filtri "Consegna: Tutte / Non consegnati / In consegna / Consegnati / Falliti". MiniTimeline ora riflette la consegna reale (step Consegnato verde quando delivery_status=delivered). i18n IT+EN.
 - Verificato: curl (filtri delivered/not_delivered) + screenshot (Not delivered → 2 ordini, timeline consegnato verde). ⚠️ REDEPLOY per produzione.
+
+
+
+## 2026-07-05 (10) — P1: Sync catalogo da ERP via Bridge + OCR PDF scansionati
+### Feature 1 — Sync automatico catalogo da ERP (merge conservativo)
+- **Backend (bridge.py):** `upsert_master_data` (kind=product) chiama `sync_catalog_from_erp()` → upsert nel catalogo `products` (match per SKU/codice o nome). MERGE CONSERVATIVO: aggiunge nuovi (category "Da gestionale"), aggiorna nome/unità/erp_id, riempie prezzo solo se mancante, NON sovrascrive prezzi già impostati. Toggle via company.catalog_autosync (default true).
+- **Nuovi endpoint:** `GET /api/catalog/sync-status`, `PUT /api/catalog/autosync`.
+- **Agent:** `master_data_import.py` ora invia price+unit e espone `run_sync()`; `agent.py` schedula il sync (config `catalog_sync_hours`, all'avvio + periodico).
+- **Frontend (Catalog.js):** card "Sincronizzazione ERP" con stato Bridge, n° prodotti, ultimo sync + stats, toggle auto-sync. i18n IT+EN.
+### Feature 2 — OCR PDF scansionati
+- **Backend (server.py):** dep `pymupdf`. `_pdf_to_images()` renderizza pagine (max 5, 170dpi) → PNG b64; `_image_contents()` supporta lista immagini per Claude Vision. PDF senza testo ora fa fallback OCR invece di errore, in: extract_order, import-ai catalogo, WhatsApp inbound.
+- Verificato: testing agent iteration_18 (4/4 backend pytest incl. OCR reale + UI Playwright). retest_needed=False. Demo ripristinato pulito. ⚠️ REDEPLOY per produzione.
