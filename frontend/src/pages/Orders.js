@@ -45,12 +45,21 @@ const FILTERS = [
   { key: "exported", label: "Esportati" },
 ];
 
+const DELIVERY_FILTERS = [
+  { key: "all", label: "Consegna: Tutte" },
+  { key: "not_delivered", label: "Non consegnati" },
+  { key: "in_progress", label: "In consegna" },
+  { key: "delivered", label: "Consegnati" },
+  { key: "failed", label: "Falliti" },
+];
+
 const PAGE_SIZE = 25;
 
 export default function Orders() {
   const [data, setData] = useState(null); // { items, total, limit, skip }
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [delivery, setDelivery] = useState("all");
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
@@ -64,16 +73,16 @@ export default function Orders() {
   }, [q]);
 
   // Reset to first page whenever filter/search changes.
-  useEffect(() => { setPage(0); }, [filter, debouncedQ]);
+  useEffect(() => { setPage(0); }, [filter, delivery, debouncedQ]);
 
   useEffect(() => {
     setLoading(true);
     api
-      .get("/orders", { params: { limit: PAGE_SIZE, skip: page * PAGE_SIZE, status: filter, q: debouncedQ } })
+      .get("/orders", { params: { limit: PAGE_SIZE, skip: page * PAGE_SIZE, status: filter, delivery, q: debouncedQ } })
       .then(({ data }) => setData(data))
       .catch(() => setData({ items: [], total: 0, limit: PAGE_SIZE, skip: 0 }))
       .finally(() => setLoading(false));
-  }, [filter, debouncedQ, page]);
+  }, [filter, delivery, debouncedQ, page]);
 
   const items = data?.items || [];
   const total = data?.total || 0;
@@ -120,6 +129,19 @@ export default function Orders() {
             className="w-full rounded-lg border border-input bg-white pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+      </div>
+
+      <div className="mb-4 inline-flex flex-wrap gap-1 rounded-md border border-border bg-white p-1">
+        {DELIVERY_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            data-testid={`delivery-filter-${f.key}`}
+            onClick={() => setDelivery(f.key)}
+            className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${delivery === f.key ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {t(f.label)}
+          </button>
+        ))}
       </div>
 
       <div className="rounded-xl border border-border bg-white overflow-hidden">

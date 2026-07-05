@@ -870,6 +870,7 @@ async def list_orders(
     skip: int = 0,
     status: Optional[str] = None,
     q: Optional[str] = None,
+    delivery: Optional[str] = None,
 ):
     limit = max(1, min(limit, 200))
     skip = max(0, skip)
@@ -878,6 +879,15 @@ async def list_orders(
         query["status"] = status
     if q:
         query["customer_name"] = {"$regex": re.escape(q), "$options": "i"}
+    if delivery and delivery != "all":
+        if delivery == "delivered":
+            query["delivery_status"] = "delivered"
+        elif delivery == "in_progress":
+            query["delivery_status"] = {"$in": ["pending", "claimed"]}
+        elif delivery == "failed":
+            query["delivery_status"] = "failed"
+        elif delivery == "not_delivered":
+            query["delivery_status"] = {"$in": ["pending", "claimed", "failed"]}
     total = await db.orders.count_documents(query)
     items = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"items": items, "total": total, "limit": limit, "skip": skip}

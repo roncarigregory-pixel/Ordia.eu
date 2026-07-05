@@ -353,6 +353,10 @@ def setup_bridge(api, ctx):
         }
         await db.delivery_jobs.insert_one(dict(job))
         job.pop("_id", None)
+        if job["mode"] == "live":
+            await db.orders.update_one(
+                {"id": order["id"], "company_id": company_id},
+                {"$set": {"delivery_status": "pending", "updated_at": now_iso()}})
         logger.info("Bridge delivery queued job=%s order=%s agent=%s", job["id"], order["id"], agent["id"])
         return job
 
@@ -372,6 +376,10 @@ def setup_bridge(api, ctx):
             {"_id": 0}).sort("created_at", 1).to_list(20)
         for j in jobs:
             await db.delivery_jobs.update_one({"id": j["id"]}, {"$set": {"status": "claimed", "claimed_at": now}})
+            if j.get("mode") == "live":
+                await db.orders.update_one(
+                    {"id": j["order_id"], "company_id": agent["company_id"]},
+                    {"$set": {"delivery_status": "claimed", "updated_at": now_iso()}})
         return {"jobs": jobs, "count": len(jobs)}
 
     class AckBody(BaseModel):
@@ -404,7 +412,7 @@ def setup_bridge(api, ctx):
                 await recompute_readiness(agent["id"])
             else:
                 await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]}, {
-                    "$set": {"status": "exported", "updated_at": now_iso()},
+                    "$set": {"status": "exported", "delivery_status": "delivered", "updated_at": now_iso()},
                     "$push": {"history": history_entry("Consegnato nel gestionale (Bridge)", "bridge",
                                                        agent.get("erp_name") or agent["name"])}})
                 await create_notification(agent["company_id"], "bridge_delivered",
@@ -421,10 +429,16 @@ def setup_bridge(api, ctx):
             await db.delivery_jobs.update_one({"id": job["id"]}, {
                 "$set": {"status": "pending", "error": body.error, "next_attempt_at": next_at, "updated_at": now_iso()},
                 "$inc": {"attempts": 1}})
+            if job.get("mode") == "live":
+                await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]},
+                    {"$set": {"delivery_status": "pending", "updated_at": now_iso()}})
             return {"ok": True, "retry_in": backoff, "attempt": attempts}
         await db.delivery_jobs.update_one({"id": job["id"]}, {
             "$set": {"status": "failed", "error": body.error, "updated_at": now_iso()},
             "$inc": {"attempts": 1}})
+        if job.get("mode") == "live":
+            await db.orders.update_one({"id": job["order_id"], "company_id": agent["company_id"]},
+                {"$set": {"delivery_status": "failed", "updated_at": now_iso()}})
         await create_notification(agent["company_id"], "bridge_exception",
                                   customer_name=job.get("customer_name"), order_id=job["order_id"],
                                   detail=(body.error or "Consegna non riuscita")[:160])

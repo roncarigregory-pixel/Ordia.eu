@@ -324,3 +324,10 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 ## 2026-07-05 (8) — Mini-timeline compatta nella lista Ordini
 - `MiniTimeline` (Orders.js): mini-stepper a pallini+segmenti per riga nella nuova colonna "Avanzamento" (visibile ≥lg). Ricevuto → Confermato → Inviato → Consegnato, verde=completato / blu=in corso / grigio=da fare. Derivato da o.status + o.delivery_status. i18n key "Avanzamento".
 - Verificato via screenshot (6 ordini con stati misti: exported/ready/validated/needs_review renderizzano correttamente). ⚠️ REDEPLOY per produzione.
+
+
+
+## 2026-07-05 (9) — Filtro per stato di consegna nella lista Ordini
+- **Backend:** denormalizzato `delivery_status` sul documento ordine (solo job Bridge `live`, non `shadow`), aggiornato ad ogni transizione in bridge.py: enqueue→pending, claim→claimed, ack delivered→delivered, retry→pending, fail→failed. `list_orders` accetta param `delivery` (all|not_delivered|in_progress|delivered|failed).
+- **Frontend Orders.js:** secondo gruppo di filtri "Consegna: Tutte / Non consegnati / In consegna / Consegnati / Falliti". MiniTimeline ora riflette la consegna reale (step Consegnato verde quando delivery_status=delivered). i18n IT+EN.
+- Verificato: curl (filtri delivered/not_delivered) + screenshot (Not delivered → 2 ordini, timeline consegnato verde). ⚠️ REDEPLOY per produzione.
