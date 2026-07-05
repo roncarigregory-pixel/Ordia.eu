@@ -351,3 +351,11 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - **Frontend (WhatsAppSetup.js, step Credenziali):** aggiunta guida "Dove trovo questi valori? (percorso più rapido)" con 2 passaggi numerati e link diretti (Meta for Developers / Utenti di sistema), tip token temporaneo→permanente, e hint per-campo più chiari (Configurazione API mostra Phone Number ID + WABA ID + token temporaneo insieme). i18n IT+EN.
 - Verificato via screenshot (guida + link + campi renderizzano correttamente). Solo UI/testo, nessun cambio backend. ⚠️ REDEPLOY per produzione.
 - **Refactoring server.py/OrderReview.js:** NON eseguito (rimane P2, rischio regressioni vicino alla presentazione; da fare dopo il go-live cliente).
+
+
+
+## 2026-07-05 (12) — Code review: fix reale + refactoring incrementale sicuro
+- **Fix reale:** `Catalog.js` preview import AI usava `key={i}` su lista editabile+rimovibile → aggiunto id stabile `_rid` per riga (key stabile), data-testid invariati.
+- **Refactoring sicuro (zero logica cambiata):** estratti da `OrderReview.js` i componenti puri `OrderTimeline` → `components/order/OrderTimeline.jsx` e `DeliveryStatusPill` → `components/order/DeliveryStatusPill.jsx`. OrderReview.js ridotto da ~666 a ~617 righe. Verificato: build pulita + screenshot review OK (timeline + item OCR renderizzano).
+- **Falsi positivi del report (verificati, nessuna azione):** "secrets" nei test = DEMO_PASSWORD demo123 (credenziale demo documentata); ErpSetup.js:14 = etichetta UI "Token / API key"; tutti gli `is` = `is None`; hook deps in OrderReview/ErpSetup già corrette (useCallback).
+- **Rimandati (P2, dopo go-live):** refactoring ampio `setup_bridge()`/`ingest_order()`/`run_extraction()`/`sync_catalog_from_erp()`, split ulteriore componenti grandi, oggetti inline/ternari annidati.

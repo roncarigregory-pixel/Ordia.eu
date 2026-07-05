@@ -20,6 +20,8 @@ import {
   FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OrderTimeline } from "@/components/order/OrderTimeline";
+import { DeliveryStatusPill } from "@/components/order/DeliveryStatusPill";
 
 function confColor(c) {
   if (c >= 0.8) return "text-emerald-600";
@@ -139,57 +141,6 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
     </div>
   );
 }
-
-function DeliveryStatusPill({ delivery, t }) {
-  if (!delivery) return null;
-  const map = {
-    none: { cls: "bg-slate-100 text-slate-500", dot: "bg-slate-300", label: t("Nessun Bridge collegato"), pulse: false },
-    pending: { cls: "bg-amber-50 text-amber-700 border border-amber-200", dot: "bg-amber-400", label: t("In coda per il Bridge…"), pulse: true },
-    claimed: { cls: "bg-blue-50 text-blue-700 border border-blue-200", dot: "bg-blue-400", label: t("Consegna nel gestionale in corso…"), pulse: true },
-    delivered: { cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500", label: t("Consegnato nel gestionale ✓"), pulse: false },
-    failed: { cls: "bg-red-50 text-red-700 border border-red-200", dot: "bg-red-500", label: t("Consegna non riuscita"), pulse: false },
-  };
-  const m = map[delivery.status] || map.none;
-  return (
-    <span data-testid="delivery-status" className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium", m.cls)}>
-      <span className={cn("h-2 w-2 rounded-full", m.dot, m.pulse && "animate-pulse")} />
-      {m.label}{delivery.status === "delivered" && delivery.mode === "shadow" ? ` (${t("simulazione")})` : ""}
-    </span>
-  );
-}
-
-function OrderTimeline({ status, delivered, t }) {
-  // Ricevuto -> Confermato -> Inviato -> Consegnato
-  const confirmed = status === "validated" || status === "exported";
-  const sent = status === "exported";
-  const steps = [
-    { key: "received", label: t("Ricevuto"), done: status !== "processing", current: status === "processing" },
-    { key: "confirmed", label: t("Confermato"), done: confirmed, current: status === "needs_review" || status === "ready" },
-    { key: "sent", label: t("Inviato"), done: sent, current: status === "validated" },
-    { key: "delivered", label: t("Consegnato"), done: delivered, current: sent && !delivered },
-  ];
-  return (
-    <div data-testid="order-timeline" className="mb-5 flex items-center gap-1 overflow-x-auto rounded-xl border border-border bg-white px-4 py-3">
-      {steps.map((s, i) => (
-        <div key={s.key} className="flex items-center gap-1 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-colors",
-              s.done ? "bg-emerald-500 text-white"
-                : s.current ? "bg-ai text-white ring-4 ring-ai/15"
-                : "bg-slate-100 text-slate-400"
-            )}>
-              {s.done ? <Check size={13} /> : i + 1}
-            </span>
-            <span className={cn("text-xs font-medium", s.done ? "text-emerald-700" : s.current ? "text-foreground" : "text-slate-400")}>{s.label}</span>
-          </div>
-          {i < steps.length - 1 && <div className={cn("mx-2 h-px w-8 md:w-14", s.done ? "bg-emerald-300" : "bg-slate-200")} />}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 
 export default function OrderReview() {
   const { id } = useParams();
