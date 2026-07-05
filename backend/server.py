@@ -913,12 +913,30 @@ async def validate_order(order_id: str, user: dict = Depends(get_current_user)):
                            "$push": {"history": history_entry("Ordine confermato", user["id"])}})
     order["status"] = "validated"
     await learn_from_order(user["company_id"], order)  # every confirmed line teaches Ordia
-    await enqueue_erp_export(user["company_id"], order)  # automation chain: export on confirm
-    await enqueue_bridge_delivery(user["company_id"], order)  # Bridge: deliver into the ERP
     await db.notifications.update_many(
         {"company_id": user["company_id"], "order_id": order_id, "status": "open"},
         {"$set": {"status": "resolved", "updated_at": now_iso()}})
     return order
+
+
+@api.post("/orders/{order_id}/send-to-erp")
+async def send_order_to_erp(order_id: str, user: dict = Depends(get_current_user)):
+    """Explicit one-click hand-off to the customer's management software (ERP),
+    performed by the operator after reviewing the complete order."""
+    order = await db.orders.find_one({"id": order_id, "company_id": user["company_id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    conn = await db.erp_connections.find_one({"company_id": user["company_id"], "active": True}, {"_id": 0})
+    agent = await db.bridge_agents.find_one({"company_id": user["company_id"], "paired": True}, {"_id": 0})
+    erp_connected = bool(conn or agent)
+    await enqueue_erp_export(user["company_id"], order)      # direct API/file connectors
+    await enqueue_bridge_delivery(user["company_id"], order)  # Bridge RPA delivery
+    await db.orders.update_one(
+        {"id": order_id}, {"$set": {"status": "exported", "updated_at": now_iso()},
+                           "$push": {"history": history_entry("Inviato al gestionale", user["id"])}})
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    updated["erp_connected"] = erp_connected
+    return updated
 
 @api.get("/learning")
 async def list_learning(user: dict = Depends(get_current_user)):

@@ -297,3 +297,11 @@ Segnalati su produzione (ordia.eu).
 - **Azioni notifiche confuse** ("Assegna a me / Risolvi / Archivia"): riscritte → primaria **"Apri e sistema"** (bg primary) + "Segna come fatto" + "Ignora". Rimosso "Assegna a me" (feature da team, confondeva utenti singoli). Copy "Consigliato:"→"Cosa fare:". IT+EN.
 - ⚠️ Sono fix di CODICE: richiedono REDEPLOY per arrivare su ordia.eu.
 
+
+## 2026-07-04 (5) — Flusso conferma → riepilogo pulito → invio al gestionale (1 clic)
+Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo invia al gestionale con un clic.
+- **Backend:** separato conferma da invio. `POST /orders/{id}/validate` ora SOLO valida+impara+risolve notifiche (niente auto-send). Nuovo `POST /orders/{id}/send-to-erp` → enqueue ERP export + Bridge delivery, status="exported", ritorna `erp_connected` (true se c'è ERP connection attiva o agente Bridge accoppiato). NB: la catena auto-confirm in `ingest_order` resta invariata.
+- **Frontend OrderReview:** stato `validated` → vista READ-ONLY pulita "Riepilogo ordine" (qty·unità·prezzo·totale) + banner verde + pulsante primario "Invia al gestionale". Stato `exported` → banner "Inviato al gestionale ✓" + badge esportato. `validate()` ora salva prima di confermare. Verificato E2E (curl + UI screenshot: needs_review→confirm→summary→send→sent).
+- i18n IT+EN per tutti i nuovi testi. Se ERP non collegato: invio riuscito + toast che invita a collegare il gestionale.
+- ⚠️ Richiede REDEPLOY per arrivare su ordia.eu.
+

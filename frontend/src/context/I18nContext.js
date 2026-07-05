@@ -294,6 +294,16 @@ const EN = {
   "Ignora": "Dismiss",
   "Ignorata": "Dismissed",
 
+  // Send to ERP flow (EN)
+  "Ordine confermato e pronto. Controlla il riepilogo e invialo al gestionale.": "Order confirmed and ready. Review the summary and send it to your management software.",
+  "Ordine inviato al gestionale ✓": "Order sent to your management software ✓",
+  "Riepilogo ordine": "Order summary",
+  "Invia al gestionale": "Send to management software",
+  "Invio…": "Sending…",
+  "Inviato al gestionale": "Sent to management software",
+  "Ordine pronto. Collega il gestionale per l'invio automatico.": "Order ready. Connect your management software for automatic delivery.",
+  "unità": "unit",
+
   // Dashboard (static)
   "Centro di Comando": "Command Center",
   "Da revisionare": "To review",

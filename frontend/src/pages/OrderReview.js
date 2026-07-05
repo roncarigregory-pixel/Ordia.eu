@@ -260,7 +260,22 @@ export default function OrderReview() {
       const { data } = await api.post(`/orders/${id}/validate`);
       setOrder(data);
       toast.success(t("Ordine confermato"));
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) { toast.error(formatApiError(err)); }
+  };
+
+  const [sendingErp, setSendingErp] = useState(false);
+  const sendToErp = async () => {
+    setSendingErp(true);
+    try {
+      const { data } = await api.post(`/orders/${id}/send-to-erp`);
+      setOrder(data);
+      toast.success(data.erp_connected
+        ? t("Ordine inviato al gestionale ✓")
+        : t("Ordine pronto. Collega il gestionale per l'invio automatico."));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) { toast.error(formatApiError(err)); }
+    finally { setSendingErp(false); }
   };
 
   const doExport = async (format) => {
@@ -291,6 +306,7 @@ export default function OrderReview() {
 
   const total = order.line_items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0);
   const reviewCount = order.line_items.filter((i) => i.needs_review).length;
+  const confirmed = order.status === "validated" || order.status === "exported";
   const isImage = (order.source_type === "file" || order.source_type === "image") && /\[Immagine/i.test(order.source_preview || "");
 
   if (order.status === "processing") {
@@ -394,10 +410,23 @@ export default function OrderReview() {
         </motion.div>
       )}
 
-      {reviewCount > 0 && (
+      {reviewCount > 0 && !confirmed && (
         <div data-testid="review-banner" className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <AlertTriangle size={17} />
           {reviewCount === 1 ? t("review.banner.one", { n: reviewCount }) : t("review.banner.many", { n: reviewCount })}
+        </div>
+      )}
+
+      {order.status === "validated" && (
+        <div data-testid="confirmed-banner" className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <CheckCircle2 size={18} />
+          <span className="font-medium">{t("Ordine confermato e pronto. Controlla il riepilogo e invialo al gestionale.")}</span>
+        </div>
+      )}
+      {order.status === "exported" && (
+        <div data-testid="exported-banner" className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-sm text-emerald-900">
+          <CheckCircle2 size={18} />
+          <span className="font-medium">{t("Ordine inviato al gestionale ✓")}</span>
         </div>
       )}
 
@@ -416,40 +445,68 @@ export default function OrderReview() {
           </div>
         </div>
 
-        {/* Editable table */}
+        {/* Line items — editable while reviewing, clean read-only once confirmed */}
         <div className="space-y-3 lg:col-span-3">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={order.line_items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-3">
+          {confirmed ? (
+            <div data-testid="order-summary" className="rounded-xl border border-border bg-white overflow-hidden">
+              <div className="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                {t("Riepilogo ordine")}
+              </div>
+              <div className="divide-y divide-border">
                 {order.line_items.map((it) => (
-                  <SortableRow key={it.id} it={it} products={products}
-                    onMatch={onMatch} onUpdate={onUpdate} onDuplicate={onDuplicate} onRemove={onRemove} onCreate={onCreateProduct} />
+                  <div key={it.id} className="flex items-center gap-3 px-4 py-3">
+                    <span className="flex h-6 min-w-6 items-center justify-center rounded-md bg-secondary px-1.5 font-mono text-sm font-semibold">{it.quantity}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{it.product_name || it.raw_text}</p>
+                      <p className="text-xs text-muted-foreground">{it.unit || t("unità")} · €{(it.price || 0).toFixed(2)}</p>
+                    </div>
+                    <span className="font-mono text-sm font-semibold">€{((it.price || 0) * (it.quantity || 0)).toFixed(2)}</span>
+                  </div>
                 ))}
               </div>
-            </SortableContext>
-          </DndContext>
+              <div className="flex items-center justify-between border-t border-border bg-secondary/40 px-4 py-3">
+                <span className="text-sm font-medium">{t("Totale ordine")}</span>
+                <span data-testid="order-total" className="font-display text-xl font-bold tracking-tight">€{total.toFixed(2)}</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={order.line_items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-3">
+                    {order.line_items.map((it) => (
+                      <SortableRow key={it.id} it={it} products={products}
+                        onMatch={onMatch} onUpdate={onUpdate} onDuplicate={onDuplicate} onRemove={onRemove} onCreate={onCreateProduct} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
 
-          <button
-            data-testid="add-line-item"
-            onClick={addItem}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-white py-2.5 text-sm text-muted-foreground transition-colors hover:border-slate-300 hover:text-foreground"
-          >
-            <Plus size={16} /> {t("Aggiungi articolo")}
-          </button>
+              <button
+                data-testid="add-line-item"
+                onClick={addItem}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-white py-2.5 text-sm text-muted-foreground transition-colors hover:border-slate-300 hover:text-foreground"
+              >
+                <Plus size={16} /> {t("Aggiungi articolo")}
+              </button>
 
-          <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
-            <span className="text-sm font-medium">{t("Totale ordine")}</span>
-            <span data-testid="order-total" className="font-display text-xl font-bold tracking-tight">€{total.toFixed(2)}</span>
-          </div>
+              <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
+                <span className="text-sm font-medium">{t("Totale ordine")}</span>
+                <span data-testid="order-total" className="font-display text-xl font-bold tracking-tight">€{total.toFixed(2)}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Action bar */}
       <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-white/85 backdrop-blur-xl md:left-[240px]">
         <div className="mx-auto flex max-w-[1600px] items-center justify-end gap-2 px-6 py-3 md:px-8">
-          <button data-testid="save-order-button" onClick={save} disabled={saving} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary disabled:opacity-60">
-            {saving ? t("Salvataggio…") : t("Salva")}
-          </button>
+          {!confirmed && (
+            <button data-testid="save-order-button" onClick={save} disabled={saving} className="rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary disabled:opacity-60">
+              {saving ? t("Salvataggio…") : t("Salva")}
+            </button>
+          )}
           <div className="relative">
             <button data-testid="export-menu-button" onClick={() => setExportOpen((o) => !o)} className="flex items-center gap-1.5 rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium transition-colors hover:bg-secondary">
               <Download size={16} /> {t("Esporta")} <ChevronDown size={14} />
@@ -471,9 +528,22 @@ export default function OrderReview() {
               </div>
             )}
           </div>
-          <button data-testid="validate-order-button" onClick={validate} className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
-            <CheckCircle2 size={16} /> {t("Conferma ordine")}
-          </button>
+          {!confirmed && (
+            <button data-testid="validate-order-button" onClick={validate} className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
+              <CheckCircle2 size={16} /> {t("Conferma ordine")}
+            </button>
+          )}
+          {order.status === "validated" && (
+            <button data-testid="send-to-erp-button" onClick={sendToErp} disabled={sendingErp} className="flex items-center gap-1.5 rounded-lg bg-ai px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-ai/90 disabled:opacity-60">
+              {sendingErp ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}
+              {sendingErp ? t("Invio…") : t("Invia al gestionale")}
+            </button>
+          )}
+          {order.status === "exported" && (
+            <span data-testid="sent-to-erp-badge" className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
+              <CheckCircle2 size={16} /> {t("Inviato al gestionale")}
+            </span>
+          )}
         </div>
       </div>
 
