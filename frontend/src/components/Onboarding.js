@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -11,7 +12,7 @@ import {
 } from "@/components/ui/accordion";
 import {
   Play, HelpCircle, X, ArrowRight, ArrowLeft, Sparkles, MessageSquare,
-  ScanText, CheckCircle2, Send, BookOpen, Compass, Film,
+  ScanText, CheckCircle2, Send, BookOpen, Compass, Film, ListChecks,
 } from "lucide-react";
 import { useI18n } from "@/context/I18nContext";
 
@@ -167,6 +168,7 @@ function GuidedTour({ step, total, onNext, onPrev, onClose }) {
 /* ---------------------------- Provider ---------------------------- */
 export function OnboardingProvider({ children }) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -251,6 +253,11 @@ export function OnboardingProvider({ children }) {
             <SheetTitle className="font-display text-xl tracking-tight flex items-center gap-2"><BookOpen size={18} /> {t("Guida")}</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-2">
+            <button data-testid="help-resume-onboarding" onClick={() => { setHelpOpen(false); navigate("/app"); }}
+              className="flex w-full items-center gap-3 rounded-xl border border-ai/30 bg-ai/5 p-3 text-left hover:bg-ai/10">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ai text-white"><ListChecks size={16} /></div>
+              <div><p className="text-sm font-semibold">{t("Riprendi la configurazione")}</p><p className="text-xs text-muted-foreground">{t("Torna alla checklist per completare i passaggi")}</p></div>
+            </button>
             <button data-testid="help-watch-video" onClick={() => { setHelpOpen(false); openVideo(); }}
               className="flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/40 p-3 text-left hover:bg-secondary">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Play size={16} fill="currentColor" /></div>

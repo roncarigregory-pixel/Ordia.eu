@@ -1,0 +1,57 @@
+{
+  "summary": "Iter 23 — FULL end-to-end verification of the P0 guided-onboarding feature on a BRAND-NEW self-service account (no seeded state, no human help). Backend pytest (9/9 PASS in ~11s) covers the entire funnel: register → GET /onboarding/status returns 5 steps all pending → POST /onboarding/skip-step 'catalog' rejected with 400 (required step) → PUT /company {sector, erp_name} flips profile.done=true → POST /products/import-ai/confirm mode=add flips catalog.done=true (via db.catalog_imports insertion) → POST /bridge/agents then POST /bridge/pair (NO auth header, simulating the desktop agent) returns a token and flips bridge.done=true → POST /onboarding/skip-step 'whatsapp' marks it skipped → POST /orders/extract (source_type=text, realistic Italian order) creates an order that reaches needs_review within ~15s and flips first_order.done=true → final status has required_done=true + all_done=true → POST /onboarding/dismiss persists dismissed=true across GET. Frontend Playwright (3 runs) reproduced the exact non-technical user path: /register with 4 index-based inputs → auto-login+redirect to /app → welcome modal dismissed via Escape → onboarding-checklist appears with progress 0/5 and all 5 onboarding-step-* rows + skip buttons only on whatsapp/bridge (required steps have NO skip button, matches spec) → onboarding-cta-profile opens onboarding-profile-dialog, profile-name+profile-sector select_option(value='Alimentari / Food & Beverage')+profile-erp+profile-save → progress becomes 1/5 → onboarding-cta-catalog navigates to /app/catalog?import=1 and AUTO-OPENS catalog-wizard → src-paste + wizard-paste-text (3 messy products) + wizard-paste-analyze → AI (Claude, ~15s) returns 3 preview rows in wizard-row-* → wizard-to-confirm + mode-add + wizard-confirm → progress becomes 2/5 → onboarding-skip-whatsapp + onboarding-skip-bridge (still 2/5 because skipped != done, correct) → onboarding-cta-first_order goes to /app/new → channel-text + order-text-input textarea + extract-order-button submits the Italian order 'Buongiorno, per il ristorante Da Mario: 10 kg mozzarella, 5 casse passata di pomodoro, 3 kg parmigiano. Consegna giovedì.' → AI extracts customer 'Da Mario' + 3 items in ~6s, onboarding-status polling shows first_order.done=true and all_done=true within ~6s → reload /app → onboarding-checklist card is ABSENT (auto-hidden because all required done). Dismiss flow verified on a separate fresh account: onboarding-dismiss (X) hides the card immediately AND POST /api/onboarding/dismiss persists across reload. help-resume-onboarding verified inside onboarding-help-panel Sheet after clicking onboarding-help-btn and navigates back to /app. Cleanup: 8 test companies + all their users/products/orders/agents/notifications/catalog_imports deleted from Mongo (0 e2e+ users remain).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "OnboardingProvider / onboarding-help-btn",
+        "issue": "The floating help button (bottom-6 right-5, z-70) is visually covered on desktop by the 'Made with Emergent' badge that Emergent injects into the preview iframe (also bottom-right). A real click via Playwright `page.click` on the button is intercepted by that badge overlay and does NOT open the Sheet. JS-dispatched `.click()` works and the Sheet opens correctly with help-resume-onboarding visible. Real end-users are unlikely to see the Emergent badge in production, but the help button z-index (70) and position should be raised above z=80 / repositioned bottom-left to be defensive.",
+        "selector": "[data-testid='onboarding-help-btn']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Onboarding help sheet + profile dialog",
+        "issues": [
+          "Radix console warning: 'Missing Description or aria-describedby={undefined} for {DialogContent}' — appears on onboarding-video-modal and onboarding-help-panel (SheetContent). Add DialogDescription / SheetDescription to satisfy Radix a11y contract."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter23_onboarding_e2e.py",
+    "/app/test_reports/pytest/iter23.xml"
+  ],
+  "action_items": [
+    "OPTIONAL polish (LOW): Raise z-index of onboarding-help-btn (e.g., z-[80]) or move it bottom-left so the Emergent preview badge doesn't overlap it in the sandbox. Not a real-user blocker in production.",
+    "OPTIONAL polish (LOW): Add <SheetDescription>/<DialogDescription> to onboarding-help-panel and onboarding-video-modal to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1849-1891 _compute_onboarding() is a clean, single query per step with correct 'skipped != done' semantics (line 1883). required_done and all_done are computed identically (line 1889) — verified: skipping BOTH optional steps whatsapp+bridge does NOT flip all_done, only required steps do. Progress card correctly hides on all_done. Good.",
+    "server.py:1902 skip-step guard rejects any non-optional step key with a clear IT message. Matches spec exactly (only 'whatsapp' and 'bridge' allowed).",
+    "bridge.py:390-411 POST /bridge/pair has NO get_current_user dependency (correct — the desktop agent has no user token; only the 6-digit code). Consumes the code atomically ($set pairing_code:null + paired:true) and returns a long-lived token — replay attempts return 404 'Codice non valido o già usato'. Nice.",
+    "OnboardingChecklist.jsx:33 hides the card when hidden || !status || status.dismissed || status.all_done — matches spec (card disappears after last required step). No re-render loop because 'all_done' derives from server state, not the local hidden flag.",
+    "OnboardingChecklist.jsx:47-50 dismiss handler optimistically hides the card immediately (setHidden(true)) BEFORE POST completes, and swallows API errors so the UI never gets stuck. Good UX for non-technical users.",
+    "Catalog.js:42-49 uses searchParams.get('import') === '1' + setSearchParams({replace:true}) to auto-open the wizard once and immediately clean the URL — a page refresh won't re-open the wizard. Correct pattern.",
+    "server.py 3475 lines — the products/catalog import section (~250 lines) is still a candidate for extraction into /app/backend/catalog.py in the modular style of bridge.py. Not blocking, but flagged consistently since iter17.",
+    "OnboardingChecklist ProfileDialog validates all three fields client-side (name, sector, erp_name) with clear IT toasts — a non-technical user cannot submit an empty profile and end up stuck with a 'profile.done never flips' surprise. Good defensive UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter23_onboarding_e2e.py (NEW — 9 pytest tests, ~200 lines, module-scoped brand-new-account fixture with self-service registration, no reliance on seeded data)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 pytest tests PASS on brand-new account in 11s)",
+    "frontend": "100% for core E2E funnel (registration → welcome dismiss → checklist 0/5 → profile → catalog wizard → skip whatsapp/bridge → first order via AI → checklist auto-hide → dismiss persist → help-resume-onboarding). One low-priority defensive fix noted: help button z-index vs Emergent preview badge."
+  },
+  "test_credentials": "This iteration deliberately registers a fresh account per run (e2e+<timestamp>@example.com / e2etestpass123). Existing demo (already fully configured, checklist hidden by all_done): demo@ordia.app / demo123.",
+  "seed_data_creation": "During UI + pytest runs 8 fresh companies were registered (TEST_E2E_Co_*, TEST_E2E_UI_*, TEST_E2E_FULL_*, TEST_E2E_Dismiss_*, TEST_E2E_Help_*). ALL cleaned up post-test via mongosh: 0 e2e+ users remain, and their companies/products/orders/agents/notifications/catalog_imports were cascade-deleted. Demo account and seeded data untouched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend E2E suite lives at /app/backend/tests/test_iter23_onboarding_e2e.py — 9 tests, module-scoped fixture registers a brand-new account each session, run stand-alone with: cd /app/backend && python -m pytest tests/test_iter23_onboarding_e2e.py -v -o addopts=''  (note: pytest.ini forces -n auto via xdist which reorders class-scoped ordered tests — pass -o addopts='' to disable). Registration form on /register has NO name attributes on inputs — always fill by index [0]=company, [1]=name, [2]=email, [3]=password. The login/register API returns 'access_token' (not 'token'). Welcome modal (data-testid='onboarding-welcome') appears ~600ms after first login; dismiss with Escape or welcome-skip. Sector select values are the literal Italian strings (e.g. 'Alimentari / Food & Beverage'). Bridge pairing simulation: create agent → read pairing_code → POST /api/bridge/pair with NO auth header. AI order extraction is now fast (~6s) not 40s. Catalog step is driven by db.catalog_imports NOT product count (seeded 25 products do NOT count).",
+  "rca of the issue": "No blocking bugs found. The complete non-technical E2E funnel works flawlessly: a brand-new customer can go from /register to first-processed-order with only 4 clicks/paste on the onboarding checklist. Two LOW-priority polish items surfaced (help button z-index vs preview badge overlay + Radix a11y warning) — neither blocks the P0 acceptance criteria. The feature is READY for production."
+}

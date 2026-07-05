@@ -6,6 +6,7 @@ import { useI18n } from "@/context/I18nContext";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ORDIA_TUTORIAL_VIDEO } from "@/components/Onboarding";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import {
   Sparkles, Plus, ArrowUpRight, Inbox, Bell, Users, AlertTriangle,
   Lightbulb, GraduationCap, CircleCheck, Clock, Euro, Zap, TrendingUp,
@@ -55,6 +56,7 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fade-up">
+      <OnboardingChecklist />
       {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}

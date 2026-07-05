@@ -1794,6 +1794,8 @@ class CompanyUpdate(BaseModel):
     country: Optional[str] = None
     currency: Optional[str] = None
     phone: Optional[str] = None
+    sector: Optional[str] = None
+    erp_name: Optional[str] = None
 
 class TeamMemberCreate(BaseModel):
     name: str
@@ -1835,6 +1837,77 @@ async def update_company(body: CompanyUpdate, user: dict = Depends(get_current_u
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     await db.companies.update_one({"id": user["company_id"]}, {"$set": update})
     return await db.companies.find_one({"id": user["company_id"]}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Guided onboarding — a LIVE checklist that walks a brand-new customer from
+# signup to their first processed order. Steps reflect REAL state, so the card
+# self-updates and disappears once the required milestones are done.
+# ---------------------------------------------------------------------------
+ONBOARDING_OPTIONAL = ["whatsapp", "bridge"]
+
+async def _compute_onboarding(company_id: str) -> dict:
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    ob = company.get("onboarding") or {}
+    skipped = set(ob.get("skipped") or [])
+
+    profile_done = bool((company.get("name") or "").strip()
+                        and (company.get("sector") or "").strip()
+                        and (company.get("erp_name") or "").strip())
+    imports = await db.catalog_imports.count_documents({"company_id": company_id})
+    catalog_done = imports > 0 or bool(company.get("last_catalog_sync"))
+    wa = await db.integrations.find({"company_id": company_id, "type": "whatsapp"}, {"_id": 0, "status": 1}).to_list(50)
+    wa_done = any(a.get("status") == "connected" for a in wa)
+    bridge_done = bool(await db.bridge_agents.find_one({"company_id": company_id, "paired": True}))
+    first_order_done = bool(await db.orders.find_one(
+        {"company_id": company_id, "status": {"$in": ["needs_review", "validated", "exported"]}}))
+
+    steps = [
+        {"key": "profile", "label": "Completa il profilo azienda",
+         "desc": "Nome, settore e gestionale utilizzato.", "done": profile_done,
+         "optional": False, "skippable": False, "route": "/app/setup/company"},
+        {"key": "catalog", "label": "Importa il tuo catalogo",
+         "desc": "Excel, PDF, foto o testo: ci pensa l'AI.", "done": catalog_done,
+         "optional": False, "skippable": False, "route": "/app/catalog?import=1"},
+        {"key": "whatsapp", "label": "Collega WhatsApp Business (opzionale)",
+         "desc": "Ricevi gli ordini WhatsApp direttamente in Ordia.", "done": wa_done,
+         "optional": True, "skippable": True, "route": "/app/setup/whatsapp"},
+        {"key": "bridge", "label": "Installa e collega Ordia Bridge (opzionale)",
+         "desc": "Invia gli ordini approvati nel gestionale, in automatico.", "done": bridge_done,
+         "optional": True, "skippable": True, "route": "/app/setup/bridge"},
+        {"key": "first_order", "label": "Elabora il primo ordine",
+         "desc": "Incolla o carica un ordine: l'AI lo legge, tu approvi.", "done": first_order_done,
+         "optional": False, "skippable": False, "route": "/app/new"},
+    ]
+    for s in steps:
+        s["skipped"] = (s["key"] in skipped and not s["done"])
+    required_done = all(s["done"] for s in steps if not s["optional"])
+    completed = sum(1 for s in steps if s["done"])
+    return {
+        "steps": steps,
+        "completed": completed, "total": len(steps),
+        "required_done": required_done, "all_done": required_done,
+        "dismissed": bool(ob.get("dismissed")),
+    }
+
+@api.get("/onboarding/status")
+async def onboarding_status(user: dict = Depends(get_current_user)):
+    return await _compute_onboarding(user["company_id"])
+
+class OnboardingSkip(BaseModel):
+    step: str
+
+@api.post("/onboarding/skip-step")
+async def onboarding_skip_step(body: OnboardingSkip, user: dict = Depends(get_current_user)):
+    if body.step not in ONBOARDING_OPTIONAL:
+        raise HTTPException(status_code=400, detail="Questo passaggio non può essere saltato.")
+    await db.companies.update_one({"id": user["company_id"]}, {"$addToSet": {"onboarding.skipped": body.step}})
+    return await _compute_onboarding(user["company_id"])
+
+@api.post("/onboarding/dismiss")
+async def onboarding_dismiss(user: dict = Depends(get_current_user)):
+    await db.companies.update_one({"id": user["company_id"]}, {"$set": {"onboarding.dismissed": True}})
+    return {"ok": True}
 
 @api.get("/team")
 async def list_team(user: dict = Depends(get_current_user)):

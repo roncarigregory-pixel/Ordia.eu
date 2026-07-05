@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
@@ -37,6 +38,15 @@ export default function Catalog() {
   useEffect(() => { load(); loadSync(); loadStatus(); loadImports(); }, [load, loadSync, loadStatus, loadImports]);
 
   const onImportDone = () => { load(); loadStatus(); loadImports(); };
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("import") === "1") {
+      setWizardOpen(true);
+      searchParams.delete("import");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const toggleAutosync = async () => {
     if (!syncStatus) return;
