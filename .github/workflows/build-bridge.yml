@@ -1,0 +1,56 @@
+name: Build Ordia Bridge (Windows installer)
+
+on:
+  push:
+    tags: ["bridge-v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build the native agent (.exe)
+        working-directory: bridge_native
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name OrdiaBridge
+          --hidden-import config_gui
+          ordia_bridge.py
+
+      - name: Download WinSW (service wrapper)
+        working-directory: bridge_native/winsw
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe" -OutFile "OrdiaBridgeService.exe"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile installer
+        working-directory: bridge_native
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" OrdiaBridge.iss'
+
+      # To sign later, add a step here using signtool.exe with your code-signing certificate
+      # before uploading the artifact (removes the Windows SmartScreen warning).
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrdiaBridgeSetup
+          path: bridge_native/Output/OrdiaBridgeSetup.exe
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bridge_native/Output/OrdiaBridgeSetup.exe

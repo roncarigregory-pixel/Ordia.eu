@@ -1,0 +1,13 @@
+<service>
+  <id>OrdiaBridge</id>
+  <name>Ordia Bridge</name>
+  <description>Ordia Bridge — consegna gli ordini approvati nel tuo gestionale. Si avvia automaticamente.</description>
+  <executable>%BASE%\OrdiaBridge.exe</executable>
+  <arguments>run</arguments>
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec"/>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>3</keepFiles>
+  </log>
+</service>

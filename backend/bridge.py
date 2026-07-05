@@ -17,6 +17,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from fastapi import Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -232,6 +233,24 @@ def setup_bridge(api, ctx):
             headers={"Content-Disposition": 'attachment; filename="ordia-bridge.zip"'},
         )
 
+    @api.get("/bridge/installer/windows")
+    async def installer_windows(request: Request):
+        """Native Windows installer info for the 'Scarica Ordia Bridge' button and auto-update.
+        Public: the agent polls it to self-update. URL comes from env (GitHub release asset)."""
+        url = os.environ.get("BRIDGE_INSTALLER_URL", "").strip()
+        version = os.environ.get("BRIDGE_INSTALLER_VERSION", "1.0.0").strip()
+        if not url:
+            return {"available": False, "url": None, "version": version,
+                    "message": "L'installer è in fase di pubblicazione."}
+        if request.query_params.get("redirect") == "1":
+            return RedirectResponse(url)
+        return {"available": True, "url": url, "version": version}
+
+    class BridgeLogsBody(BaseModel):
+        logs: str
+        version: Optional[str] = None
+        consent: bool = False
+
     @api.put("/bridge/agents/{agent_id}")
     async def update_bridge_agent(agent_id: str, body: AgentUpdate, user: dict = Depends(get_current_user)):
         require_privileged(user)
@@ -318,6 +337,17 @@ def setup_bridge(api, ctx):
         if not agent:
             raise HTTPException(status_code=401, detail="Bridge token non valido")
         return agent
+
+    @api.post("/bridge/logs")
+    async def upload_bridge_logs(body: BridgeLogsBody, agent: dict = Depends(get_current_agent)):
+        """Consent-gated diagnostic log upload from the native agent (helps support)."""
+        if not body.consent:
+            return {"ok": False, "stored": False}
+        await db.bridge_logs.insert_one({
+            "id": str(uuid.uuid4()), "company_id": agent["company_id"], "agent_id": agent["id"],
+            "version": body.version, "logs": (body.logs or "")[:50000], "created_at": now_iso(),
+        })
+        return {"ok": True, "stored": True}
 
     async def enqueue_bridge_delivery(company_id: str, order: dict):
         """Approved order -> Bridge delivery queue. Renders with the agent's profile if set.

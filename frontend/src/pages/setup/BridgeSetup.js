@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { api, formatApiError } from "@/lib/api";
 import { useI18n } from "@/context/I18nContext";
 import { SetupBack, Field, inputCls } from "./_shared";
@@ -147,8 +148,35 @@ function BridgeDiary({ diary }) {
   );
 }
 
+function BridgeStatusStepper({ agent, t }) {
+  const online = agent.paired && agent.status === "online" && agent.last_seen;
+  const steps = [
+    { key: "install", label: t("Installazione"), done: agent.paired, current: !agent.paired },
+    { key: "connect", label: t("Connessione"), done: online, current: agent.paired && !online },
+    { key: "connected", label: t("Collegato"), done: online, current: false },
+  ];
+  return (
+    <div data-testid={`bridge-stepper-${agent.id}`} className="flex items-center gap-1">
+      {steps.map((s, i) => (
+        <div key={s.key} className="flex items-center gap-1">
+          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${s.done ? "bg-emerald-500 text-white" : s.current ? "bg-ai text-white ring-4 ring-ai/15" : "bg-slate-100 text-slate-400"}`}>{s.done ? "✓" : i + 1}</span>
+          <span className={`text-xs font-medium ${s.done ? "text-emerald-700" : s.current ? "text-foreground" : "text-slate-400"}`}>{s.label}</span>
+          {i < steps.length - 1 && <div className={`mx-1.5 h-px w-6 ${s.done ? "bg-emerald-300" : "bg-slate-200"}`} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause, simple }) {
   const { t } = useI18n();
+  const downloadInstaller = async () => {
+    try {
+      const { data } = await api.get("/bridge/installer/windows");
+      if (data.available && data.url) window.open(data.url, "_blank");
+      else toast.info(t("L'installer di Ordia Bridge sarà disponibile a breve. Contatta l'assistenza per riceverlo."));
+    } catch { toast.error(t("Download non riuscito, riprova.")); }
+  };
   const online = agent.status === "online" && agent.last_seen;
   const offline = agent.paired && agent.status === "offline";
   const maturity = agent.paired ? (agent.maturity || "learning") : "unpaired";
@@ -174,45 +202,42 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
         </button>
       </div>
       {!agent.paired && agent.pairing_code && (
-        <div className="mt-3 space-y-3">
-          <div className="rounded-md bg-secondary p-3">
-            <p className="text-xs font-semibold text-foreground mb-1">{t("Passo 1 · Scarica il Bridge")}</p>
-            <p className="text-xs text-muted-foreground mb-2">{t("Installalo su un dispositivo sempre acceso vicino al gestionale (mini-PC, NAS o il PC dell'ufficio ordini).")}</p>
-            <button data-testid={`bridge-download-${agent.id}`} onClick={downloadBridge}
-              className="inline-flex items-center gap-2 rounded-md bg-foreground px-3 py-2 text-xs font-semibold text-background hover:opacity-90">
-              <UploadSimple size={15} className="rotate-180" /> {t("Scarica Bridge (.zip)")}
-            </button>
-          </div>
-
-          <div className="rounded-md bg-secondary p-3">
-            <p className="text-xs font-semibold text-foreground mb-1">{t("Passo 2 · Avvia con un comando")}</p>
-            <p className="text-xs text-muted-foreground mb-2">{t("Nella cartella scaricata, esegui (Docker). Il codice è già incluso — nessuna porta da aprire, nessun IT.")}</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 overflow-x-auto rounded border border-border bg-white px-3 py-2 text-[11px] font-mono whitespace-nowrap">
-                ORDIA_BACKEND={BACKEND} ORDIA_PAIR_CODE={agent.pairing_code} docker compose up -d
-              </code>
-              <button data-testid={`bridge-copy-cmd-${agent.id}`}
-                onClick={() => { navigator.clipboard?.writeText(`ORDIA_BACKEND=${BACKEND} ORDIA_PAIR_CODE=${agent.pairing_code} docker compose up -d`); toast.success(t("Comando copiato")); }}
-                className="shrink-0 rounded-md border border-input bg-white p-2 hover:bg-secondary"><Copy size={15} /></button>
+        <div className="mt-4 space-y-4">
+          <BridgeStatusStepper agent={agent} t={t} />
+          <div className="grid sm:grid-cols-[1fr_auto] gap-4 items-start">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold">1 · {t("Scarica e installa")}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t("Doppio clic sul file scaricato e segui la procedura. Nessun comando, niente Docker.")}</p>
+                <button data-testid={`bridge-download-${agent.id}`} onClick={downloadInstaller}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+                  <UploadSimple size={16} className="rotate-180" /> {t("Scarica Ordia Bridge")}
+                </button>
+              </div>
+              <div>
+                <p className="text-sm font-semibold">2 · {t("Inserisci questo codice")}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t("Nella finestra che si apre, digita il codice (o scansiona il QR col telefono) e premi Connetti.")}</p>
+                <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2">
+                  <span data-testid={`bridge-pairing-code-${agent.id}`} className="font-mono text-2xl font-bold tracking-[0.3em]">{agent.pairing_code}</span>
+                  <button onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }} className="text-slate-400 hover:text-foreground">
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-white p-3 shrink-0">
+              <QRCodeSVG value={`ORDIA-PAIR:${agent.pairing_code}`} size={104} data-testid={`bridge-qr-${agent.id}`} />
+              <span className="text-[10px] text-muted-foreground">{t("Scansiona il codice")}</span>
             </div>
           </div>
-
-          <div className="rounded-md bg-secondary p-3">
-            <p className="text-xs font-semibold text-foreground mb-1">{t("Codice di accoppiamento")}</p>
-            <div className="flex items-center gap-2">
-              <span data-testid={`bridge-pairing-code-${agent.id}`} className="font-mono text-2xl font-bold tracking-[0.3em]">{agent.pairing_code}</span>
-              <button onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }} className="text-slate-400 hover:text-foreground">
-                <Copy size={16} />
-              </button>
-            </div>
-          </div>
-
           <div data-testid={`bridge-waiting-${agent.id}`} className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
             <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-xs text-amber-700">{t("In attesa del collegamento del Bridge… questa scheda si aggiorna da sola appena l'agente si connette.")}</span>
+            <span className="text-xs text-amber-700">{t("In attesa del collegamento… questa pagina si aggiorna da sola appena il Bridge si connette.")}</span>
           </div>
         </div>
       )}
+
+      {agent.paired && (<div className="mt-3"><BridgeStatusStepper agent={agent} t={t} /></div>)}
       {!simple && (<div className="mt-3 grid sm:grid-cols-2 gap-3">
         <Field label={t("Gestionale / ERP")}>
           <input className={inputCls} defaultValue={agent.erp_name || ""} placeholder="es. Danea, Business Central"
