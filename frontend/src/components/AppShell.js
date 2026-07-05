@@ -5,7 +5,7 @@ import { useI18n, LanguageToggle } from "@/context/I18nContext";
 import { api } from "@/lib/api";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { OnboardingProvider } from "@/components/Onboarding";
-import { LayoutGrid, Inbox, Users, Package, Settings, LogOut, Plus, Bell, Sparkles } from "lucide-react";
+import { LayoutGrid, Inbox, Users, Package, Settings, LogOut, Plus, Bell, Sparkles, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LOGO = "https://static.prod-images.emergentagent.com/jobs/a5624b55-271e-475e-b7f2-289728dea1db/images/c2366cbc5b415553f0e7a15df85e794d75397480b11ddc13c97ae35d53d7c3be.png";
@@ -17,6 +17,7 @@ const NAV = [
   { to: "/app/customers", label: "Clienti", short: "Clienti", icon: Users, testid: "nav-customers" },
   { to: "/app/catalog", label: "Catalogo", short: "Catalogo", icon: Package, testid: "nav-catalog" },
   { to: "/app/leads", label: "Lead", short: "Lead", icon: Sparkles, testid: "nav-leads" },
+  { to: "/app/marketing", label: "Marketing", short: "Marketing", icon: Megaphone, testid: "nav-marketing" },
   { to: "/app/setup", label: "Configurazione", short: "Setup", icon: Settings, testid: "nav-setup" },
 ];
 

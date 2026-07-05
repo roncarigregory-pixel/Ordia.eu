@@ -3196,6 +3196,13 @@ enqueue_bridge_delivery = _bridge["enqueue_bridge_delivery"]
 bridge_monitor_loop = _bridge["bridge_monitor_loop"]
 weekly_summary_loop = _bridge["weekly_summary_loop"]
 
+import marketing as _marketing_mod
+_marketing = _marketing_mod.setup_marketing(api, {
+    "db": db, "get_current_user": get_current_user,
+    "require_privileged": require_privileged,
+    "EMERGENT_LLM_KEY": EMERGENT_LLM_KEY,
+})
+
 
 app.include_router(api)
 
