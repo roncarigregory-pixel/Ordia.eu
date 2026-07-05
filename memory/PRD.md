@@ -16,6 +16,22 @@ UI e comunicazione con l'utente: **ITALIANO**. Benchmark UX: Stripe / Linear.
 Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-ready.
 
 ## ✅ Completato
+### 🚀 Onboarding P0 — Codice Bridge + Wizard Catalogo (5 Lug 2026, iteration_22, 100% pass)
+- **Codice di collegamento Bridge** (`bridge.py`, `BridgeSetup.js`): box evidente "Il tuo codice di accoppiamento" con
+  codice grande, "Copia codice", QR, spiegazione ("collega il PC del gestionale al tuo account Ordia"), stato codice
+  Valido/Scaduto (scadenza 7gg via `code_expires_at`/`code_status`), **Rigenera codice** (`POST /bridge/agents/{id}/regenerate-code`),
+  **Invia istruzioni al tecnico** via email (`POST /bridge/agents/{id}/send-instructions`), **Verifica collegamento** per agenti collegati.
+  Pairing rifiuta codici scaduti. Testo "Trovi il codice in Ordia → Impostazioni → Collega Bridge" ovunque.
+- **Installer nativo** (`config_gui.py`): finestra con barra di avanzamento (Collegamento→Verifica→Pronto) e schermata finale
+  con spunta verde grande "Il Bridge è pronto." Rinominato "codice di collegamento".
+- **Wizard "Importa catalogo" 3 step** (`components/CatalogImportWizard.jsx`, `Catalog.js`):
+  Step1 sorgenti (Excel/CSV, PDF, foto/screenshot, incolla testo, manuale) + modello Excel scaricabile (`GET /products/template`) + riprendi bozza;
+  Step2 tabella modificabile con evidenza campi incerti (`_uncertain`) e duplicati (`_exists`), salva bozza;
+  Step3 conferma con modalità **Aggiungi** (skip duplicati) o **Aggiorna** (upsert per SKU/nome).
+  Endpoint: `import-ai/text`, `import-ai/confirm` (mode add/update, storico in `catalog_imports`), `catalog/status` (assente/incompleto/pronto),
+  `catalog/imports`, `catalog/import-draft` (PUT/GET/DELETE). Banner stato catalogo + storico importazioni in pagina Catalogo.
+
+
 
 ### 🌍 Internazionalizzazione IT/EN + Posizionamento (Giu 2026, iteration_14/15, 100% pass)
 - **i18n completo** (`context/I18nContext.js`): `I18nProvider`, `useI18n()`, `t(key, vars)` con interpolazione `{var}`.

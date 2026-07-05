@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { useI18n } from "@/context/I18nContext";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   FileSpreadsheet, FileText, Image as ImageIcon, ClipboardPaste, Plus,
   Loader2, Trash2, Sparkles, Download, Save, ArrowLeft, ArrowRight,
@@ -113,6 +113,7 @@ export function CatalogImportWizard({ open, onClose, onDone }) {
           <DialogTitle className="font-display tracking-tight flex items-center gap-2">
             <Sparkles size={18} className="text-ai" /> {t("Importa catalogo")}
           </DialogTitle>
+          <DialogDescription className="sr-only">{t("Importa il catalogo prodotti in 3 passaggi: carica, controlla, conferma.")}</DialogDescription>
         </DialogHeader>
 
         {/* Stepper */}
