@@ -443,6 +443,20 @@ def setup_bridge(api, ctx):
         return await db.delivery_jobs.find(
             q, {"_id": 0, "standard_order": 0, "rendered": 0}).sort("created_at", -1).to_list(200)
 
+    @api.get("/orders/{order_id}/delivery")
+    async def get_order_delivery(order_id: str, user: dict = Depends(get_current_user)):
+        """Real-time delivery status of an order into the customer's ERP (via Bridge).
+        Returns the latest delivery job, or {status: 'none'} when no Bridge is paired."""
+        cur = db.delivery_jobs.find(
+            {"company_id": user["company_id"], "order_id": order_id},
+            {"_id": 0, "standard_order": 0, "rendered": 0}).sort("created_at", -1).limit(1)
+        jobs = await cur.to_list(1)
+        if not jobs:
+            return {"status": "none"}
+        j = jobs[0]
+        return {"status": j.get("status"), "mode": j.get("mode"), "erp_name": j.get("erp_name"),
+                "attempts": j.get("attempts", 0), "error": j.get("error"), "updated_at": j.get("updated_at")}
+
     # ---- ERP Adapter Profiles (learned UI recipes) + network effect -------------
     # An adapter is the LEARNED recipe to drive a given ERP's UI. It is company-agnostic
     # (a UI recipe), so once one customer learns & confirms an ERP, every other customer

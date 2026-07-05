@@ -140,6 +140,40 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
   );
 }
 
+function DeliveryStatusPill({ orderId }) {
+  const { t } = useI18n();
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    let stop = false;
+    const fetchOnce = async () => {
+      try { const { data } = await api.get(`/orders/${orderId}/delivery`); if (!stop) setD(data); return data.status; }
+      catch { return null; }
+    };
+    fetchOnce();
+    const iv = setInterval(async () => {
+      const s = await fetchOnce();
+      if (s && !["pending", "claimed"].includes(s)) clearInterval(iv);
+    }, 3000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [orderId]);
+  if (!d) return null;
+  const map = {
+    none: { cls: "bg-slate-100 text-slate-500", dot: "bg-slate-300", label: t("Nessun Bridge collegato"), pulse: false },
+    pending: { cls: "bg-amber-50 text-amber-700 border border-amber-200", dot: "bg-amber-400", label: t("In coda per il Bridge…"), pulse: true },
+    claimed: { cls: "bg-blue-50 text-blue-700 border border-blue-200", dot: "bg-blue-400", label: t("Consegna nel gestionale in corso…"), pulse: true },
+    delivered: { cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500", label: t("Consegnato nel gestionale ✓"), pulse: false },
+    failed: { cls: "bg-red-50 text-red-700 border border-red-200", dot: "bg-red-500", label: t("Consegna non riuscita"), pulse: false },
+  };
+  const m = map[d.status] || map.none;
+  return (
+    <span data-testid="delivery-status" className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium", m.cls)}>
+      <span className={cn("h-2 w-2 rounded-full", m.dot, m.pulse && "animate-pulse")} />
+      {m.label}{d.status === "delivered" && d.mode === "shadow" ? ` (${t("simulazione")})` : ""}
+    </span>
+  );
+}
+
+
 export default function OrderReview() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -424,9 +458,10 @@ export default function OrderReview() {
         </div>
       )}
       {order.status === "exported" && (
-        <div data-testid="exported-banner" className="mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-sm text-emerald-900">
+        <div data-testid="exported-banner" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-sm text-emerald-900">
           <CheckCircle2 size={18} />
           <span className="font-medium">{t("Ordine inviato al gestionale ✓")}</span>
+          <DeliveryStatusPill orderId={id} />
         </div>
       )}
 

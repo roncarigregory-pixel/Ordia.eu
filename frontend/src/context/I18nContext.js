@@ -304,6 +304,14 @@ const EN = {
   "Ordine pronto. Collega il gestionale per l'invio automatico.": "Order ready. Connect your management software for automatic delivery.",
   "unità": "unit",
 
+  // Delivery status (EN)
+  "Nessun Bridge collegato": "No Bridge connected",
+  "In coda per il Bridge…": "Queued for the Bridge…",
+  "Consegna nel gestionale in corso…": "Delivering into your ERP…",
+  "Consegnato nel gestionale ✓": "Delivered into your ERP ✓",
+  "Consegna non riuscita": "Delivery failed",
+  "simulazione": "simulation",
+
   // Dashboard (static)
   "Centro di Comando": "Command Center",
   "Da revisionare": "To review",

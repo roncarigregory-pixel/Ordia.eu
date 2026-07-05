@@ -305,3 +305,10 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - i18n IT+EN per tutti i nuovi testi. Se ERP non collegato: invio riuscito + toast che invita a collegare il gestionale.
 - ⚠️ Richiede REDEPLOY per arrivare su ordia.eu.
 
+
+## 2026-07-04 (6) — Indicatore stato consegna nel gestionale (real-time)
+- **Backend:** nuovo `GET /orders/{id}/delivery` (bridge.py) → ultimo delivery_job dell'ordine {status, mode, erp_name, attempts, error} o {status:"none"} se nessun Bridge.
+- **Frontend OrderReview:** componente `DeliveryStatusPill` nel banner "inviato" — polling 3s, stati: none/pending/claimed/delivered/failed con colori+pulse; "(simulazione)" se mode=shadow. i18n IT+EN.
+- Verificato: endpoint OK ({"status":"none"} senza Bridge), compila pulito. Live end-to-end quando il cliente collega il Bridge reale.
+- ⚠️ REDEPLOY per produzione.
+
