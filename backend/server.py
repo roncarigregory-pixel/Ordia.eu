@@ -391,7 +391,7 @@ async def run_catalog_extraction(source_text: Optional[str], image_b64: Optional
         prompt = f"SUPPLIER CATALOG CONTENT:\n{source_text}\n\nExtract the product catalog now."
     else:
         prompt = "The supplier catalog is in the attached image. Extract the product catalog now."
-    file_contents = [ImageContent(image_base64=image_b64)] if image_b64 else None
+    file_contents = _image_contents(image_b64)
     response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
     text = response.strip() if isinstance(response, str) else str(response)
     if text.startswith("```"):
@@ -440,7 +440,10 @@ async def import_products_ai_preview(file: UploadFile = File(...), user: dict = 
         if txt.strip():
             source_text = txt
         else:
-            raise HTTPException(status_code=400, detail="Questo PDF sembra scansionato (senza testo). Caricalo come foto/immagine.")
+            # Scanned PDF (no text layer): OCR via vision by rendering pages to images.
+            image_b64 = _pdf_to_images(content)
+            if not image_b64:
+                raise HTTPException(status_code=400, detail="Impossibile leggere questo PDF. Prova con CSV, Excel o una foto.")
     elif fname.endswith((".csv", ".xlsx", ".xls")):
         try:
             df = _read_tabular(content, file.filename)
@@ -506,6 +509,32 @@ def _read_tabular(content: bytes, filename: str) -> pd.DataFrame:
 def _extract_pdf_text(content: bytes) -> str:
     reader = PdfReader(io.BytesIO(content))
     return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def _pdf_to_images(content: bytes, max_pages: int = 5, dpi: int = 170) -> List[str]:
+    """Render PDF pages to PNG images (base64) for OCR of scanned PDFs via vision.
+    Used when a PDF has no embedded text layer."""
+    import fitz  # PyMuPDF
+    imgs = []
+    doc = fitz.open(stream=content, filetype="pdf")
+    try:
+        zoom = dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+        for page in doc[:max_pages]:
+            pix = page.get_pixmap(matrix=mat)
+            imgs.append(base64.b64encode(pix.tobytes("png")).decode("utf-8"))
+    finally:
+        doc.close()
+    return imgs
+
+
+def _image_contents(image_b64) -> Optional[list]:
+    """Build vision ImageContent list from a single base64 image or a list of them."""
+    if not image_b64:
+        return None
+    imgs = image_b64 if isinstance(image_b64, list) else [image_b64]
+    return [ImageContent(image_base64=b) for b in imgs if b] or None
+
 
 AUDIO_EXTS = (".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg")
 
@@ -626,7 +655,7 @@ async def run_extraction(source_text: Optional[str], image_b64: Optional[str], p
     else:
         prompt += "The incoming order is in the attached image. Extract the structured order now."
 
-    file_contents = [ImageContent(image_base64=image_b64)] if image_b64 else None
+    file_contents = _image_contents(image_b64)
     message = UserMessage(text=prompt, file_contents=file_contents)
     response = await chat.send_message(message)
 
@@ -826,9 +855,15 @@ async def extract_order(
             source_preview = source_text
         elif fname.endswith(".pdf"):
             source_text = _extract_pdf_text(content)
-            source_preview = source_text or "(scanned PDF — no embedded text)"
-            if not source_text.strip():
-                raise HTTPException(status_code=400, detail="Non riesco a leggere il testo da questo PDF. Prova a caricarlo come immagine.")
+            if source_text.strip():
+                source_preview = source_text
+            else:
+                # Scanned PDF: OCR via vision (render pages to images).
+                image_b64 = _pdf_to_images(content)
+                source_text = None
+                source_preview = "(PDF scansionato — lettura OCR in corso…)"
+                if not image_b64:
+                    raise HTTPException(status_code=400, detail="Non riesco a leggere questo PDF. Prova a caricarlo come immagine.")
         elif fname.endswith((".png", ".jpg", ".jpeg", ".webp")):
             image_b64 = base64.b64encode(content).decode("utf-8")
             source_preview = f"[Immagine: {file.filename}]"
@@ -1857,6 +1892,10 @@ async def _wa_source_from_message(msg: dict, acc: dict):
             txt = _extract_pdf_text(content)
             if txt.strip():
                 return txt, None, f"[WhatsApp PDF {fname} da {sender}]"
+            # Scanned PDF: OCR via vision (render pages to images).
+            imgs = _pdf_to_images(content)
+            if imgs:
+                return None, imgs, f"[WhatsApp PDF scansionato {fname} da {sender}]"
         return None, None, None
     return None, None, None
 

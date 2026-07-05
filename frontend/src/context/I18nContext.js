@@ -108,6 +108,8 @@ const UI = {
     "newOrder.dropzone": "Trascina un file {ch} o clicca per sfogliare",
     "catalog.imported": "{n} prodotti importati",
     "catalog.aiImported": "{n} prodotti importati · {s} già presenti saltati",
+    "catalog.syncConnected": "Collegato a {erp}. Il catalogo si aggiorna automaticamente dai prodotti del gestionale.",
+    "catalog.syncCount": "{n} prodotti nel catalogo",
     "preview.aiFound": "L'AI ha trovato {n} prodotti",
     "preview.save": "Salva {n} prodotti",
     "time.minAgo": "{n} min fa",
@@ -217,6 +219,8 @@ const UI = {
     "newOrder.dropzone": "Drop a {ch} file or click to browse",
     "catalog.imported": "{n} products imported",
     "catalog.aiImported": "{n} products imported · {s} duplicates skipped",
+    "catalog.syncConnected": "Connected to {erp}. The catalog auto-updates from your ERP products.",
+    "catalog.syncCount": "{n} products in catalog",
     "preview.aiFound": "AI found {n} products",
     "preview.save": "Save {n} products",
     "time.minAgo": "{n} min ago",
@@ -239,6 +243,17 @@ const UI = {
 // Italian-source → English phrase map. For lang=it the Italian key is returned
 // as-is (identity), so only English translations need to be maintained here.
 const EN = {
+  // Catalog — ERP sync
+  "Sincronizzazione automatica attivata.": "Automatic sync enabled.",
+  "Sincronizzazione automatica disattivata.": "Automatic sync disabled.",
+  "Sincronizzazione catalogo dal gestionale": "Catalog sync from your ERP",
+  "Bridge collegato": "Bridge connected",
+  "Bridge non collegato": "Bridge not connected",
+  "Collega il Bridge per importare e mantenere aggiornato il catalogo automaticamente dal tuo gestionale.": "Connect the Bridge to import and keep your catalog up to date automatically from your ERP.",
+  "Ultima sincronizzazione": "Last sync",
+  "Nessuna sincronizzazione ancora": "No sync yet",
+  "Auto-sync attivo": "Auto-sync on",
+  "Auto-sync disattivo": "Auto-sync off",
   // AppShell
   "Dashboard": "Dashboard",
   "Home": "Home",

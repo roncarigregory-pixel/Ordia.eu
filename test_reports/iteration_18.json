@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 18 — Confirmation pass for two new P1 features on Ordia: (1) ERP catalog auto-sync via Bridge (conservative merge) and (2) OCR for scanned PDFs via PyMuPDF + Claude Vision. All 4 backend pytest tests passed (14.6s incl. real Claude Vision OCR of a scanned PDF). Frontend Catalog UI verified end-to-end via Playwright — sync card visible with correct testids, autosync toggle flips state + shows toast. Demo account restored to pristine state after tests.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter18_catalog_sync_ocr.py",
+    "/app/test_reports/pytest/iter18.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "bridge.py sync_catalog_from_erp() has a subtle NEW-product edge case: when the ERP push contains two entries with the SAME name back-to-back and neither exists in the catalog, both would be inserted (only by_name is refreshed after insert, but by_sku is only set when code is present). Practically harmless for the current test but worth a dedupe pass on `entries` at the top of the function to avoid double-inserts on ERP duplicates.",
+    "sync_catalog_from_erp() correctly preserves manual prices (`if (not match.get(\"price\")) and price` — only fills a missing price). Verified in test_master_data_conservative_merge: existing €13.20 price on 'Chopped Tomatoes Tin' was NOT overwritten when the ERP push carried price €113.20.",
+    "POST /bridge/master-data returns catalog_sync={enabled:false, inserted:0, updated:0} when autosync is disabled — correct short-circuit, no side effects on products collection. Confirmed.",
+    "OCR fallback: server.py extract_order() correctly branches on empty _extract_pdf_text() -> _pdf_to_images() -> vision. Returns HTTP 200 with status='processing' immediately, then background task _ingest_bg fills line_items via Claude Vision. Fully async, no 524 timeout risk. Confirmed with /tmp/scanned_order.pdf: extracted 'Ristorante Da Mario' + 2 line items in ~10s.",
+    "Frontend Catalog.js loadSync uses .catch(() => setSyncStatus(null)) — a 500/network error silently hides the sync card. Consider surfacing a toast on failure for debuggability; not a bug in current pass.",
+    "backend/server.py is still 3153 lines — see iter17 comment; splitting into modules is overdue but not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter18_catalog_sync_ocr.py (NEW — 4 tests covering sync-status shape, conservative-merge insert+update, autosync toggle + disabled push no-op, and scanned PDF OCR poll-to-completion)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 in test_iter18_catalog_sync_ocr.py, 14.6s)",
+    "frontend": "100% (Catalog ERP sync card visible; autosync-toggle flips label+color; toast appears)"
+  },
+  "test_credentials": "demo@ordia.app / demo123 (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "Test run created 1 bridge agent (TEST_iter18_agent), 1 catalog product ('TEST_iter18_NewProduct', category='Da gestionale'), 1 erp_master_data doc, 1 order (from scanned PDF). ALL cleaned up by the module-scoped autouse cleanup fixture. Additionally I manually unset company.last_catalog_sync / last_catalog_sync_stats / catalog_autosync and deleted the leftover erp_master_data row so the demo account sync-status is back to {autosync:true, last_sync:null, last_sync_stats:null, product_count:25, erp_product_count:0, bridge_connected:false, erp_name:null}. Verified final state via curl.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter18 focus: catalog auto-sync + scanned-PDF OCR. Backend endpoints exercised: POST /api/bridge/agents, POST /api/bridge/pair, POST /api/bridge/master-data (X-Bridge-Token header), GET /api/catalog/sync-status, PUT /api/catalog/autosync {enabled:bool}, POST /api/orders/extract (source_type=file, PDF with no text layer), GET /api/orders/{id} (poll for status transition from 'processing'). Frontend testids confirmed on /app/catalog: catalog-erp-sync, catalog-sync-bridge-status, catalog-sync-count, catalog-autosync-toggle. Playwright login flow needs Escape after login to dismiss the onboarding welcome dialog (see iter16 RCA). PyMuPDF (fitz) is installed in backend venv; Claude Sonnet 4.6 vision via Emergent LLM key handles the OCR in ~5-10s for a 2-page scanned invoice. To re-run: cd /app/backend && python -m pytest tests/test_iter18_catalog_sync_ocr.py -n 0 -v (pytest.ini has xdist forced to workers, -n 0 required to keep module-scoped fixtures).",
+  "rca of the issue": "N/A — no bugs found in this confirmation pass. Both new features work exactly as designed: (1) conservative merge preserves manual prices while inserting new products with category='Da gestionale', autosync=false correctly short-circuits master-data push; (2) scanned PDF OCR returns fast with status='processing' and background task fills line_items via Claude Vision within ~10s."
+}

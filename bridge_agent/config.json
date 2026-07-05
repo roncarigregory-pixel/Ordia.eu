@@ -1,6 +1,7 @@
 {
   "delivery_mode": "rpa_learned",
   "erp_key": "odoo/18",
+  "catalog_sync_hours": 12,
   "odoo_url": "http://localhost:8069",
   "login": "admin",
   "password": "admin",

@@ -691,7 +691,7 @@ RULES:
     class MasterDataBody(BaseModel):
         erp_key: str
         kind: str                    # customer | product | tax
-        entries: List[dict]          # [{erp_id, code, name}]
+        entries: List[dict]          # [{erp_id, code, name, price?, unit?}]
 
     @api.post("/bridge/master-data")
     async def upsert_master_data(body: MasterDataBody, agent: dict = Depends(get_current_agent)):
@@ -705,7 +705,92 @@ RULES:
         kind_it = {"customer": "clienti", "product": "prodotti/SKU", "tax": "aliquote IVA"}.get(body.kind, body.kind)
         await log_bridge_event(agent["company_id"], agent["id"], "master_data",
             f"Imparati {len(body.entries)} {kind_it} dal gestionale")
-        return {"ok": True, "kind": body.kind, "count": len(body.entries)}
+        sync = None
+        if body.kind == "product":
+            sync = await sync_catalog_from_erp(agent["company_id"], body.entries)
+            if sync and (sync["inserted"] or sync["updated"]):
+                await log_bridge_event(agent["company_id"], agent["id"], "catalog_sync",
+                    f"Catalogo aggiornato dal gestionale: {sync['inserted']} nuovi, {sync['updated']} aggiornati")
+        return {"ok": True, "kind": body.kind, "count": len(body.entries), "catalog_sync": sync}
+
+    async def sync_catalog_from_erp(company_id: str, entries: list) -> dict:
+        """Merge ERP product list into the Ordia catalog (conservative).
+        Adds new products and refreshes name/unit; never overwrites manually-set prices.
+        Skipped when the company disabled auto-sync."""
+        company = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+        if company.get("catalog_autosync") is False:
+            return {"enabled": False, "inserted": 0, "updated": 0}
+        products = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(20000)
+        by_sku = {(p.get("sku") or "").strip().lower(): p for p in products if (p.get("sku") or "").strip()}
+        by_name = {(p.get("name") or "").strip().lower(): p for p in products}
+        inserted, updated = 0, 0
+        for e in entries:
+            name = str(e.get("name") or "").strip()
+            if not name:
+                continue
+            code = str(e.get("code") or "").strip()
+            unit = str(e.get("unit") or "").strip()
+            try:
+                price = float(e.get("price") or 0)
+            except (ValueError, TypeError):
+                price = 0.0
+            match = (by_sku.get(code.lower()) if code else None) or by_name.get(name.lower())
+            if match:
+                upd = {"erp_id": e.get("erp_id"), "updated_at": now_iso()}
+                if code and not (match.get("sku") or "").strip():
+                    upd["sku"] = code
+                if unit:
+                    upd["unit"] = unit
+                if name and name != match.get("name"):
+                    upd["name"] = name
+                if (not match.get("price")) and price:
+                    upd["price"] = price  # only fill a missing price; never overwrite a set one
+                await db.products.update_one({"id": match["id"], "company_id": company_id}, {"$set": upd})
+                updated += 1
+            else:
+                new_p = {
+                    "id": str(uuid.uuid4()), "company_id": company_id, "name": name,
+                    "sku": code, "category": "Da gestionale", "unit": unit or "unità",
+                    "pack_size": "", "price": price, "aliases": [], "erp_id": e.get("erp_id"),
+                    "created_at": now_iso(),
+                }
+                await db.products.insert_one(new_p)
+                by_sku[code.lower()] = new_p if code else by_sku.get(code.lower())
+                by_name[name.lower()] = new_p
+                inserted += 1
+        await db.companies.update_one({"id": company_id},
+            {"$set": {"last_catalog_sync": now_iso(),
+                      "last_catalog_sync_stats": {"inserted": inserted, "updated": updated,
+                                                  "total": len(entries)}}})
+        return {"enabled": True, "inserted": inserted, "updated": updated}
+
+    @api.get("/catalog/sync-status")
+    async def catalog_sync_status(user: dict = Depends(get_current_user)):
+        company = await db.companies.find_one({"id": user["company_id"]}, {"_id": 0}) or {}
+        product_count = await db.products.count_documents({"company_id": user["company_id"]})
+        md = await db.erp_master_data.find_one(
+            {"company_id": user["company_id"], "kind": "product"}, {"_id": 0})
+        agent = await db.bridge_agents.find_one(
+            {"company_id": user["company_id"], "paired": True}, {"_id": 0})
+        return {
+            "autosync": company.get("catalog_autosync", True),
+            "last_sync": company.get("last_catalog_sync"),
+            "last_sync_stats": company.get("last_catalog_sync_stats"),
+            "product_count": product_count,
+            "erp_product_count": (md or {}).get("count", 0),
+            "bridge_connected": bool(agent),
+            "erp_name": (agent or {}).get("erp_name"),
+        }
+
+    class AutosyncBody(BaseModel):
+        enabled: bool
+
+    @api.put("/catalog/autosync")
+    async def set_catalog_autosync(body: AutosyncBody, user: dict = Depends(get_current_user)):
+        require_privileged(user)
+        await db.companies.update_one({"id": user["company_id"]},
+            {"$set": {"catalog_autosync": body.enabled}})
+        return {"ok": True, "autosync": body.enabled}
 
     @api.get("/bridge/agents/{agent_id}/diary")
     async def bridge_diary(agent_id: str, user: dict = Depends(get_current_user)):

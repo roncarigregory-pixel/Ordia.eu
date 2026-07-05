@@ -133,6 +133,24 @@ def deliver(job, config, backend=None, token=None):
     return {"channel": "file", "delivered_to": path, "erp": job.get("erp_name")}
 
 
+def _maybe_sync_catalog(backend, token, config, state):
+    """Periodic ERP->Ordia catalog/master-data sync (on-prem, has ERP access).
+    Enabled by config 'catalog_sync_hours' > 0. State tracks last run to throttle."""
+    hours = float(config.get("catalog_sync_hours", 0) or 0)
+    if hours <= 0:
+        return
+    last = state.get("last_catalog_sync_ts", 0)
+    if (time.time() - last) < hours * 3600:
+        return
+    try:
+        from master_data_import import run_sync
+        run_sync(backend, token)
+        state["last_catalog_sync_ts"] = time.time()
+        print(f"[catalog-sync] completato (prossimo tra ~{hours}h)")
+    except Exception as e:
+        print(f"[catalog-sync] errore: {e}")
+
+
 def cycle(backend, token, config):
     headers = {"X-Bridge-Token": token}
     status, data = _req("GET", f"{backend}/api/bridge/relay/poll", headers=headers)
@@ -178,10 +196,13 @@ def main():
         cycle(args.backend, token, config)
         return
     print(f"[run] Ordia Bridge agent polling every {args.interval}s (Ctrl+C to stop)")
+    sync_state = {}
+    _maybe_sync_catalog(args.backend, token, config, sync_state)  # sync once at startup if enabled
     while True:
         try:
             cycle(args.backend, token, config)
             _req("POST", f"{args.backend}/api/bridge/relay/heartbeat", {}, {"X-Bridge-Token": token})
+            _maybe_sync_catalog(args.backend, token, config, sync_state)
         except Exception as e:
             print(f"[loop] error: {e}")
         time.sleep(args.interval)

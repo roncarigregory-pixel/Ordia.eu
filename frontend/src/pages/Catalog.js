@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Upload, Search, Package, Loader2, Sparkles } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, Search, Package, Loader2, Sparkles, RefreshCw, Server } from "lucide-react";
 
 const EMPTY = { sku: "", name: "", category: "General", unit: "unità", pack_size: "", price: 0, aliases: [] };
 
@@ -21,9 +21,27 @@ export default function Catalog() {
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState(null); // { count, products }
   const [savingImport, setSavingImport] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [togglingSync, setTogglingSync] = useState(false);
 
   const load = useCallback(() => api.get("/products").then(({ data }) => setProducts(data)).catch(() => setProducts([])), []);
-  useEffect(() => { load(); }, [load]);
+  const loadSync = useCallback(() => api.get("/catalog/sync-status").then(({ data }) => setSyncStatus(data)).catch(() => setSyncStatus(null)), []);
+  useEffect(() => { load(); loadSync(); }, [load, loadSync]);
+
+  const toggleAutosync = async () => {
+    if (!syncStatus) return;
+    setTogglingSync(true);
+    try {
+      const next = !syncStatus.autosync;
+      await api.put("/catalog/autosync", { enabled: next });
+      setSyncStatus((s) => ({ ...s, autosync: next }));
+      toast.success(next ? t("Sincronizzazione automatica attivata.") : t("Sincronizzazione automatica disattivata."));
+    } catch (e) {
+      toast.error(formatApiError(e));
+    } finally {
+      setTogglingSync(false);
+    }
+  };
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = (p) => {
@@ -132,6 +150,55 @@ export default function Catalog() {
           </button>
         </div>
       </div>
+
+      {syncStatus && (
+        <div data-testid="catalog-erp-sync" className="mb-4 rounded-xl border border-border bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ai/10 text-ai">
+                <Server size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold">{t("Sincronizzazione catalogo dal gestionale")}</h2>
+                  <span
+                    data-testid="catalog-sync-bridge-status"
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${syncStatus.bridge_connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${syncStatus.bridge_connected ? "bg-emerald-500" : "bg-slate-400"}`} />
+                    {syncStatus.bridge_connected ? t("Bridge collegato") : t("Bridge non collegato")}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {syncStatus.bridge_connected
+                    ? t("catalog.syncConnected", { erp: syncStatus.erp_name || "ERP" })
+                    : t("Collega il Bridge per importare e mantenere aggiornato il catalogo automaticamente dal tuo gestionale.")}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span data-testid="catalog-sync-count">{t("catalog.syncCount", { n: syncStatus.product_count })}</span>
+                  {syncStatus.last_sync ? (
+                    <span data-testid="catalog-sync-last">
+                      {t("Ultima sincronizzazione")}: {new Date(syncStatus.last_sync).toLocaleString("it-IT")}
+                      {syncStatus.last_sync_stats ? ` (+${syncStatus.last_sync_stats.inserted}, ↻${syncStatus.last_sync_stats.updated})` : ""}
+                    </span>
+                  ) : (
+                    <span data-testid="catalog-sync-last">{t("Nessuna sincronizzazione ancora")}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              data-testid="catalog-autosync-toggle"
+              onClick={toggleAutosync}
+              disabled={togglingSync}
+              className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${syncStatus.autosync ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "border-input bg-white text-foreground hover:bg-secondary"}`}
+            >
+              {togglingSync ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+              {syncStatus.autosync ? t("Auto-sync attivo") : t("Auto-sync disattivo")}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="relative max-w-xs mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
