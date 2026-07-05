@@ -359,3 +359,15 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - **Refactoring sicuro (zero logica cambiata):** estratti da `OrderReview.js` i componenti puri `OrderTimeline` → `components/order/OrderTimeline.jsx` e `DeliveryStatusPill` → `components/order/DeliveryStatusPill.jsx`. OrderReview.js ridotto da ~666 a ~617 righe. Verificato: build pulita + screenshot review OK (timeline + item OCR renderizzano).
 - **Falsi positivi del report (verificati, nessuna azione):** "secrets" nei test = DEMO_PASSWORD demo123 (credenziale demo documentata); ErpSetup.js:14 = etichetta UI "Token / API key"; tutti gli `is` = `is None`; hook deps in OrderReview/ErpSetup già corrette (useCallback).
 - **Rimandati (P2, dopo go-live):** refactoring ampio `setup_bridge()`/`ingest_order()`/`run_extraction()`/`sync_catalog_from_erp()`, split ulteriore componenti grandi, oggetti inline/ternari annidati.
+
+
+
+## 2026-07-05 (13) — Semplificazione onboarding Bridge (mobile-first)
+- **Problema utente:** collegare il Bridge/gestionale era troppo complesso e poco chiaro su mobile.
+- **Soluzione (BridgeSetup.js):** vista SEMPLICE di default → solo il flusso "Collega il Bridge" con i 3 passi (Scarica → Avvia comando → Codice accoppiamento) + stato attesa. Tutto l'avanzato (formato ERP/AI template builder, ERP appresi/adapters, log consegne, riepilogo settimanale) spostato sotto toggle "Impostazioni avanzate". AgentCard accetta prop `simple` che nasconde campi ERP/profilo + diario. Rendering condizionale (non `hidden`, che confliggeva con `grid`). i18n IT+EN. Verificato: compile pulito + screenshot mobile.
+- **Nota:** l'installazione richiede comunque un comando Docker (intrinsecamente tecnico); ridotto il rumore attorno ma non eliminabile senza un installer nativo (possibile Fase 2).
+
+## Feature complete in questa sessione (riepilogo)
+- Lead capture global-first + GDPR (iteration_19: 9/9 ✅)
+- AI Marketing Agent Fase 1 (iteration_20: 13/13 ✅) — brand-configurabile, Claude testo + Nano Banana immagini, workflow Genera→Approva→Programma→Pubblica (webhook n8n/Make), solo admin
+- Bridge onboarding semplificato (frontend, verificato via screenshot)

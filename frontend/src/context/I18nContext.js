@@ -255,6 +255,18 @@ const UI = {
 // Italian-source → English phrase map. For lang=it the Italian key is returned
 // as-is (identity), so only English translations need to be maintained here.
 const EN = {
+  // Bridge — simplified setup
+  "Il Bridge mette gli ordini approvati direttamente nel tuo gestionale. Si installa una volta sola su un computer vicino al gestionale. Segui i 3 passi qui sotto.": "The Bridge puts approved orders straight into your management software. It's installed once on a computer near your ERP. Just follow the 3 steps below.",
+  "Impostazioni avanzate (formato ERP, ERP appresi, log)": "Advanced settings (ERP format, learned ERPs, logs)",
+  "Formato del tuo gestionale": "Your ERP's format",
+  "Collega il Bridge": "Connect the Bridge",
+  "Crea il Bridge, poi installalo su un computer sempre acceso vicino al gestionale. Ti guidiamo passo passo.": "Create the Bridge, then install it on an always-on computer near your ERP. We'll guide you step by step.",
+  "Nuovo Bridge": "New Bridge",
+  "Nessun Bridge ancora": "No Bridge yet",
+  "Bastano pochi minuti. Clicca qui sotto per iniziare — ti diamo un codice e le istruzioni.": "It only takes a few minutes. Click below to start — we'll give you a code and instructions.",
+  "Inizia: crea il Bridge": "Start: create the Bridge",
+  "ERP appresi (self-learning)": "Learned ERPs (self-learning)",
+  "Consegne recenti": "Recent deliveries",
   // AI Marketing Agent
   "Marketing": "Marketing",
   "Pianifica, genera, approva e programma contenuti su tutti i canali. Tu approvi sempre prima di pubblicare.": "Plan, generate, approve and schedule content across every channel. You always approve before publishing.",

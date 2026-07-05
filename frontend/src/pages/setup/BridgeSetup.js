@@ -147,7 +147,7 @@ function BridgeDiary({ diary }) {
   );
 }
 
-function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause }) {
+function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause, simple }) {
   const { t } = useI18n();
   const online = agent.status === "online" && agent.last_seen;
   const offline = agent.paired && agent.status === "offline";
@@ -213,7 +213,7 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
           </div>
         </div>
       )}
-      <div className="mt-3 grid sm:grid-cols-2 gap-3">
+      {!simple && (<div className="mt-3 grid sm:grid-cols-2 gap-3">
         <Field label={t("Gestionale / ERP")}>
           <input className={inputCls} defaultValue={agent.erp_name || ""} placeholder="es. Danea, Business Central"
             onBlur={(e) => onChange(agent.id, { erp_name: e.target.value })} data-testid={`bridge-erp-${agent.id}`} />
@@ -225,11 +225,10 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
             {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
-      </div>
-
+      </div>)}
       {agent.paired && maturity !== "active" && <ReadinessPanel readiness={readiness} />}
 
-      {agent.paired && <BridgeDiary diary={diary} />}
+      {agent.paired && !simple && <BridgeDiary diary={diary} />}
 
       {agent.paired && maturity === "learning" && (
         <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
@@ -280,6 +279,8 @@ export default function BridgeSetup() {
   const [expanded, setExpanded] = useState({});
   const [proposed, setProposed] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const hasPaired = agents.some((a) => a.paired);
 
   const load = () => {
     api.get("/bridge/agents").then(({ data }) => {
@@ -358,11 +359,17 @@ export default function BridgeSetup() {
         <Cpu size={26} className="text-ai" />
         <h1 className="font-display text-4xl font-black tracking-tighter">Ordia Bridge</h1>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground mb-8">
-        {t("Gli ordini approvati appaiono direttamente nel tuo gestionale. Installalo una volta: il Bridge")} <b>{t("impara il tuo gestionale nel tempo")}</b> {t("e ti avvisa quando è pronto a inserire gli ordini da solo.")}
+      <p className="mt-1 text-sm text-muted-foreground mb-6">
+        {t("Il Bridge mette gli ordini approvati direttamente nel tuo gestionale. Si installa una volta sola su un computer vicino al gestionale. Segui i 3 passi qui sotto.")}
       </p>
 
-      {summary && (summary.events_count > 0 || agents.some((a) => a.paired)) && (
+      <button data-testid="bridge-toggle-advanced" onClick={() => setShowAdvanced((v) => !v)}
+        className="mb-6 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+        {showAdvanced ? <CaretDown size={13} /> : <CaretRight size={13} />}
+        {t("Impostazioni avanzate (formato ERP, ERP appresi, log)")}
+      </button>
+
+      {showAdvanced && summary && (summary.events_count > 0 || agents.some((a) => a.paired)) && (
         <div data-testid="bridge-weekly-summary" className="mb-8 rounded-md border border-border bg-white p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -389,9 +396,9 @@ export default function BridgeSetup() {
         </div>
       )}
 
-      {/* AI Template Builder */}
-      <section className="mb-10">
-        <h2 className="font-display text-lg font-bold tracking-tight mb-1">{t("1 · Formato del tuo gestionale")}</h2>
+      {/* AI Template Builder (advanced) */}
+      {showAdvanced && (<section className="mb-10">
+        <h2 className="font-display text-lg font-bold tracking-tight mb-1">{t("Formato del tuo gestionale")}</h2>
         <p className="text-sm text-muted-foreground mb-4">{t("Carica un file già importato con successo nel tuo ERP. L'AI ne apprende il formato.")}</p>
 
         <label data-testid="bridge-upload-sample" className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-white px-4 py-8 text-sm text-muted-foreground hover:border-ai transition-colors">
@@ -443,29 +450,39 @@ export default function BridgeSetup() {
             ))}
           </div>
         )}
-      </section>
+      </section>)}
 
-      {/* Agents */}
-      <section className="mb-10">
+      {/* Agents — the simple connect flow (always visible) */}
+      <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-display text-lg font-bold tracking-tight">{t("2 · Agenti Bridge")}</h2>
-            <p className="text-sm text-muted-foreground">{t("Installa l'agente su un dispositivo sempre acceso (NAS, mini-PC). Accoppialo col codice: entra in apprendimento e diventa autonomo quando è pronto.")}</p>
+            <h2 className="font-display text-lg font-bold tracking-tight">{t("Collega il Bridge")}</h2>
+            <p className="text-sm text-muted-foreground">{t("Crea il Bridge, poi installalo su un computer sempre acceso vicino al gestionale. Ti guidiamo passo passo.")}</p>
           </div>
-          <button data-testid="bridge-create-agent" onClick={createAgent} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-            <Plus size={16} /> {t("Nuovo agente")}
+          <button data-testid="bridge-create-agent" onClick={createAgent} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shrink-0">
+            <Plus size={16} /> {t("Nuovo Bridge")}
           </button>
         </div>
+
+        {agents.length === 0 && (
+          <div data-testid="bridge-empty-start" className="rounded-xl border border-dashed border-border bg-white p-8 text-center">
+            <Cpu size={32} className="mx-auto text-ai mb-3" />
+            <p className="font-semibold">{t("Nessun Bridge ancora")}</p>
+            <p className="mt-1 text-sm text-muted-foreground mb-5">{t("Bastano pochi minuti. Clicca qui sotto per iniziare — ti diamo un codice e le istruzioni.")}</p>
+            <button data-testid="bridge-start-big" onClick={createAgent} className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              <Plus size={18} /> {t("Inizia: crea il Bridge")}
+            </button>
+          </div>
+        )}
+
         <div className="space-y-3">
-          {agents.length === 0
-            ? <p className="text-sm text-muted-foreground rounded-md border border-dashed border-border p-6 text-center">{t("Nessun agente. Creane uno per iniziare.")}</p>
-            : agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} diary={diary[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} />)}
+          {agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} diary={diary[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} simple={!showAdvanced} />)}
         </div>
       </section>
 
-      {/* Learned ERPs (adapters) + master-data */}
-      <section className="mb-10">
-        <h2 className="font-display text-lg font-bold tracking-tight mb-1">{t("3 · ERP appresi (self-learning)")}</h2>
+      {/* Learned ERPs (adapters) + master-data (advanced) */}
+      {showAdvanced && (<section className="mb-10">
+        <h2 className="font-display text-lg font-bold tracking-tight mb-1">{t("ERP appresi (self-learning)")}</h2>
         <p className="text-sm text-muted-foreground mb-4">
           {t("Il Bridge apprende un ERP nuovo da una dimostrazione. Conferma l'ordine di prova per attivarlo — poi ogni cliente sullo stesso ERP lo eredita.")}
         </p>
@@ -526,13 +543,13 @@ export default function BridgeSetup() {
             ))}
           </div>
         )}
-      </section>
+      </section>)}
 
-      {/* Delivery log */}
-      <section>
+      {/* Delivery log (advanced) */}
+      {showAdvanced && (<section>
         <div className="flex items-center gap-2 mb-3">
           <ArrowsClockwise size={16} className="text-slate-400" />
-          <h2 className="font-display text-lg font-bold tracking-tight">{t("4 · Consegne recenti")}</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight">{t("Consegne recenti")}</h2>
         </div>
         {jobs.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("Nessuna consegna ancora. Approva un ordine per metterlo in coda.")}</p>
@@ -558,7 +575,7 @@ export default function BridgeSetup() {
             </table>
           </div>
         )}
-      </section>
+      </section>)}
     </div>
   );
 }
