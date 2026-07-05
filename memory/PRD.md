@@ -312,3 +312,9 @@ Richiesta: dopo aver sistemato i dubbi, l'operatore vede l'ordine completo e lo 
 - Verificato: endpoint OK ({"status":"none"} senza Bridge), compila pulito. Live end-to-end quando il cliente collega il Bridge reale.
 - ⚠️ REDEPLOY per produzione.
 
+
+
+## 2026-07-04 (7) — Timeline ordine in cima alla revisione
+- `OrderTimeline` (OrderReview.js): stepper sempre visibile Ricevuto → Confermato → Inviato → Consegnato, stati done(verde+check)/current(blu+ring)/pending(grigio). Avanza in base a order.status + delivery status.
+- Refactor: `DeliveryStatusPill` reso componente puro (prop `delivery`); stato `delivery` + polling (3s) sollevato in OrderReview e condiviso tra timeline e pill. i18n IT+EN.
+- Verificato E2E (UI: revisione→conferma→invio, timeline avanza). Compila pulito. ⚠️ REDEPLOY per produzione.

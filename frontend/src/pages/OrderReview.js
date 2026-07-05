@@ -16,7 +16,7 @@ import { ProductSearch } from "@/components/ProductSearch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, CheckCircle2, Trash2, Copy, Plus, Download, AlertTriangle, Loader2,
+  ArrowLeft, CheckCircle2, Check, Trash2, Copy, Plus, Download, AlertTriangle, Loader2,
   FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -140,23 +140,8 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
   );
 }
 
-function DeliveryStatusPill({ orderId }) {
-  const { t } = useI18n();
-  const [d, setD] = useState(null);
-  useEffect(() => {
-    let stop = false;
-    const fetchOnce = async () => {
-      try { const { data } = await api.get(`/orders/${orderId}/delivery`); if (!stop) setD(data); return data.status; }
-      catch { return null; }
-    };
-    fetchOnce();
-    const iv = setInterval(async () => {
-      const s = await fetchOnce();
-      if (s && !["pending", "claimed"].includes(s)) clearInterval(iv);
-    }, 3000);
-    return () => { stop = true; clearInterval(iv); };
-  }, [orderId]);
-  if (!d) return null;
+function DeliveryStatusPill({ delivery, t }) {
+  if (!delivery) return null;
   const map = {
     none: { cls: "bg-slate-100 text-slate-500", dot: "bg-slate-300", label: t("Nessun Bridge collegato"), pulse: false },
     pending: { cls: "bg-amber-50 text-amber-700 border border-amber-200", dot: "bg-amber-400", label: t("In coda per il Bridge…"), pulse: true },
@@ -164,12 +149,44 @@ function DeliveryStatusPill({ orderId }) {
     delivered: { cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500", label: t("Consegnato nel gestionale ✓"), pulse: false },
     failed: { cls: "bg-red-50 text-red-700 border border-red-200", dot: "bg-red-500", label: t("Consegna non riuscita"), pulse: false },
   };
-  const m = map[d.status] || map.none;
+  const m = map[delivery.status] || map.none;
   return (
     <span data-testid="delivery-status" className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium", m.cls)}>
       <span className={cn("h-2 w-2 rounded-full", m.dot, m.pulse && "animate-pulse")} />
-      {m.label}{d.status === "delivered" && d.mode === "shadow" ? ` (${t("simulazione")})` : ""}
+      {m.label}{delivery.status === "delivered" && delivery.mode === "shadow" ? ` (${t("simulazione")})` : ""}
     </span>
+  );
+}
+
+function OrderTimeline({ status, delivered, t }) {
+  // Ricevuto -> Confermato -> Inviato -> Consegnato
+  const confirmed = status === "validated" || status === "exported";
+  const sent = status === "exported";
+  const steps = [
+    { key: "received", label: t("Ricevuto"), done: status !== "processing", current: status === "processing" },
+    { key: "confirmed", label: t("Confermato"), done: confirmed, current: status === "needs_review" || status === "ready" },
+    { key: "sent", label: t("Inviato"), done: sent, current: status === "validated" },
+    { key: "delivered", label: t("Consegnato"), done: delivered, current: sent && !delivered },
+  ];
+  return (
+    <div data-testid="order-timeline" className="mb-5 flex items-center gap-1 overflow-x-auto rounded-xl border border-border bg-white px-4 py-3">
+      {steps.map((s, i) => (
+        <div key={s.key} className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-colors",
+              s.done ? "bg-emerald-500 text-white"
+                : s.current ? "bg-ai text-white ring-4 ring-ai/15"
+                : "bg-slate-100 text-slate-400"
+            )}>
+              {s.done ? <Check size={13} /> : i + 1}
+            </span>
+            <span className={cn("text-xs font-medium", s.done ? "text-emerald-700" : s.current ? "text-foreground" : "text-slate-400")}>{s.label}</span>
+          </div>
+          {i < steps.length - 1 && <div className={cn("mx-2 h-px w-8 md:w-14", s.done ? "bg-emerald-300" : "bg-slate-200")} />}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -205,6 +222,23 @@ export default function OrderReview() {
     const iv = setInterval(() => { load().catch(() => {}); }, 2000);
     return () => clearInterval(iv);
   }, [order?.status, load]);
+
+  // Delivery status into the ERP (via Bridge) — polled while confirmed/sent.
+  const [delivery, setDelivery] = useState(null);
+  useEffect(() => {
+    if (!(order?.status === "validated" || order?.status === "exported")) return undefined;
+    let stop = false;
+    const fetchOnce = async () => {
+      try { const { data } = await api.get(`/orders/${id}/delivery`); if (!stop) setDelivery(data); return data.status; }
+      catch { return null; }
+    };
+    fetchOnce();
+    const iv = setInterval(async () => {
+      const s = await fetchOnce();
+      if (s && !["pending", "claimed"].includes(s)) clearInterval(iv);
+    }, 3000);
+    return () => { stop = true; clearInterval(iv); };
+  }, [order?.status, id]);
 
   const setItems = (fn) => setOrder((prev) => ({ ...prev, line_items: fn(prev.line_items) }));
   const onUpdate = (itemId, patch) => setItems((items) => items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)));
@@ -386,6 +420,8 @@ export default function OrderReview() {
         <ArrowLeft size={16} /> {t("Ordini")}
       </button>
 
+      <OrderTimeline status={order.status} delivered={delivery?.status === "delivered"} t={t} />
+
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
@@ -461,7 +497,7 @@ export default function OrderReview() {
         <div data-testid="exported-banner" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-sm text-emerald-900">
           <CheckCircle2 size={18} />
           <span className="font-medium">{t("Ordine inviato al gestionale ✓")}</span>
-          <DeliveryStatusPill orderId={id} />
+          <DeliveryStatusPill delivery={delivery} t={t} />
         </div>
       )}
 

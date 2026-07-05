@@ -311,6 +311,10 @@ const EN = {
   "Consegnato nel gestionale ✓": "Delivered into your ERP ✓",
   "Consegna non riuscita": "Delivery failed",
   "simulazione": "simulation",
+  "Ricevuto": "Received",
+  "Confermato": "Confirmed",
+  "Inviato": "Sent",
+  "Consegnato": "Delivered",
 
   // Dashboard (static)
   "Centro di Comando": "Command Center",
