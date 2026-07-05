@@ -458,44 +458,181 @@ async def import_products_ai_preview(file: UploadFile = File(...), user: dict = 
     except Exception as e:
         logger.error(f"AI catalog import failed: {e}")
         raise HTTPException(status_code=502, detail="L'AI non è riuscita a leggere il catalogo. Riprova tra poco.")
+    await _annotate_preview(user["company_id"], products)
     return {"count": len(products), "products": products}
+
+
+class CatalogText(BaseModel):
+    text: str
+
+
+@api.post("/products/import-ai/text")
+async def import_products_ai_text(body: CatalogText, user: dict = Depends(get_current_user)):
+    """Preview step from pasted text (a messy list copied from anywhere)."""
+    text = (body.text or "").strip()
+    if len(text) < 3:
+        raise HTTPException(status_code=400, detail="Incolla il testo del listino prodotti.")
+    try:
+        products = await run_catalog_extraction(text, None)
+    except Exception as e:
+        logger.error(f"AI catalog text import failed: {e}")
+        raise HTTPException(status_code=502, detail="L'AI non è riuscita a leggere il testo. Riprova tra poco.")
+    await _annotate_preview(user["company_id"], products)
+    return {"count": len(products), "products": products}
+
+
+def _catalog_index(existing: list):
+    """Index existing products by lowercase name and SKU for dedup/upsert."""
+    by_name, by_sku = {}, {}
+    for p in existing:
+        n = (p.get("name") or "").strip().lower()
+        s = (p.get("sku") or "").strip().lower()
+        if n:
+            by_name[n] = p
+        if s:
+            by_sku[s] = p
+    return by_name, by_sku
+
+
+async def _annotate_preview(company_id: str, products: list):
+    """Flag rows that already exist (dup detection) and fields the AI is unsure about."""
+    existing = await db.products.find(
+        {"company_id": company_id}, {"_id": 0, "name": 1, "sku": 1}).to_list(20000)
+    by_name, by_sku = _catalog_index(existing)
+    for p in products:
+        name = (p.get("name") or "").strip().lower()
+        sku = (p.get("sku") or "").strip().lower()
+        p["_exists"] = bool((sku and sku in by_sku) or (name and name in by_name))
+        uncertain = []
+        if not p.get("price"):
+            uncertain.append("price")
+        if not (p.get("sku") or "").strip():
+            uncertain.append("sku")
+        p["_uncertain"] = uncertain
+    return products
 
 
 class CatalogConfirm(BaseModel):
     products: List[dict]
+    mode: str = "add"  # "add" = skip existing (no duplicates); "update" = upsert existing
 
 
 @api.post("/products/import-ai/confirm")
 async def import_products_ai_confirm(body: CatalogConfirm, user: dict = Depends(get_current_user)):
-    """Confirm step: bulk-insert the reviewed products. Skips exact-name duplicates."""
-    existing = await db.products.find({"company_id": user["company_id"]}, {"_id": 0, "name": 1}).to_list(20000)
-    existing_names = {(p.get("name") or "").strip().lower() for p in existing}
-    docs, skipped = [], 0
+    """Confirm step. mode='add' skips existing (no duplicates); mode='update' updates
+    matching products (by SKU or name) and inserts the new ones. Records import history."""
+    company_id = user["company_id"]
+    existing = await db.products.find({"company_id": company_id}, {"_id": 0}).to_list(20000)
+    by_name, by_sku = _catalog_index(existing)
+    inserted = updated = skipped = 0
     for p in body.products:
         name = str(p.get("name") or "").strip()
         if not name:
             continue
-        if name.lower() in existing_names:
-            skipped += 1
-            continue
-        existing_names.add(name.lower())
+        sku = str(p.get("sku") or "").strip()
+        match = (by_sku.get(sku.lower()) if sku else None) or by_name.get(name.lower())
         try:
             price = float(p.get("price") or 0)
         except (ValueError, TypeError):
             price = 0.0
-        docs.append({
-            "id": str(uuid.uuid4()), "company_id": user["company_id"], "name": name,
-            "sku": str(p.get("sku") or "").strip(),
+        fields = {
+            "name": name, "sku": sku,
             "category": str(p.get("category") or "General").strip() or "General",
             "unit": str(p.get("unit") or "unità").strip() or "unità",
             "pack_size": str(p.get("pack_size") or "").strip(),
             "price": price,
             "aliases": [str(a).strip() for a in (p.get("aliases") or []) if str(a).strip()],
-            "created_at": now_iso(),
-        })
-    if docs:
-        await db.products.insert_many(docs)
-    return {"inserted": len(docs), "skipped": skipped}
+        }
+        if match:
+            if body.mode == "update":
+                await db.products.update_one({"id": match["id"]}, {"$set": fields})
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        doc = {"id": str(uuid.uuid4()), "company_id": company_id, **fields, "created_at": now_iso()}
+        await db.products.insert_one(doc)
+        by_name[name.lower()] = doc
+        if sku:
+            by_sku[sku.lower()] = doc
+        inserted += 1
+    await db.catalog_imports.insert_one({
+        "id": str(uuid.uuid4()), "company_id": company_id, "mode": body.mode,
+        "inserted": inserted, "updated": updated, "skipped": skipped,
+        "total": len(body.products), "created_at": now_iso(),
+    })
+    return {"inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+@api.get("/products/template")
+async def download_catalog_template(user: dict = Depends(get_current_user)):
+    """A ready-to-fill Excel model so the customer knows exactly what format to use."""
+    df = pd.DataFrame([
+        {"sku": "MOZ001", "name": "Mozzarella Fiordilatte", "category": "Latticini",
+         "unit": "kg", "pack_size": "1 cassa = 12 x 400g", "price": 6.50,
+         "aliases": "mozzarella, mozz, fiordilatte"},
+        {"sku": "POM010", "name": "Passata di Pomodoro", "category": "Conserve",
+         "unit": "cassa", "pack_size": "12 x 700g", "price": 9.90,
+         "aliases": "passata, pomodoro"},
+    ])
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        df.to_excel(w, index=False, sheet_name="Catalogo")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="modello-catalogo-ordia.xlsx"'},
+    )
+
+
+@api.get("/catalog/status")
+async def catalog_status(user: dict = Depends(get_current_user)):
+    """Onboarding signal: catalogo assente / incompleto / pronto."""
+    company_id = user["company_id"]
+    total = await db.products.count_documents({"company_id": company_id})
+    if total == 0:
+        return {"status": "absent", "total": 0, "missing_price": 0, "missing_sku": 0}
+    missing_price = await db.products.count_documents(
+        {"company_id": company_id, "$or": [{"price": {"$lte": 0}}, {"price": None}]})
+    missing_sku = await db.products.count_documents(
+        {"company_id": company_id, "$or": [{"sku": ""}, {"sku": None}]})
+    status = "incomplete" if missing_price > total * 0.3 else "ready"
+    return {"status": status, "total": total,
+            "missing_price": missing_price, "missing_sku": missing_sku}
+
+
+@api.get("/catalog/imports")
+async def list_catalog_imports(user: dict = Depends(get_current_user)):
+    items = await db.catalog_imports.find(
+        {"company_id": user["company_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return {"items": items}
+
+
+class CatalogDraft(BaseModel):
+    products: List[dict]
+    mode: str = "add"
+
+
+@api.put("/catalog/import-draft")
+async def save_catalog_draft(body: CatalogDraft, user: dict = Depends(get_current_user)):
+    await db.catalog_drafts.update_one(
+        {"company_id": user["company_id"]},
+        {"$set": {"company_id": user["company_id"], "products": body.products,
+                  "mode": body.mode, "updated_at": now_iso()}}, upsert=True)
+    return {"ok": True, "count": len(body.products)}
+
+
+@api.get("/catalog/import-draft")
+async def get_catalog_draft(user: dict = Depends(get_current_user)):
+    d = await db.catalog_drafts.find_one({"company_id": user["company_id"]}, {"_id": 0})
+    return d or {"products": [], "mode": "add"}
+
+
+@api.delete("/catalog/import-draft")
+async def delete_catalog_draft(user: dict = Depends(get_current_user)):
+    await db.catalog_drafts.delete_one({"company_id": user["company_id"]})
+    return {"ok": True}
 
 # ---------------------------------------------------------------------------
 # Waitlist / Early-access leads — GLOBAL-FIRST, GDPR-compliant lead capture.

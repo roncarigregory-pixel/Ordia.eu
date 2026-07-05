@@ -1,0 +1,62 @@
+{
+  "summary": "Iter 22 — End-to-end verification of the two P0 onboarding features (Bridge pairing UX + 3-step Catalog Import Wizard). Backend: 9 PASSED / 1 SKIPPED (send-instructions valid-email: Resend returned 502 for @example.com — treated as integration limitation, NOT a code bug; no 500 seen). Bridge endpoints verified: POST /api/bridge/agents returns pairing_code (6 digits), code_status='valid', code_expires_at ≈7 days ahead; POST .../regenerate-code returns NEW code + code_status='valid'; POST .../send-instructions with invalid email→400, with valid email→502 (RESEND sandbox limit) or 400 'Invio email non configurato' — never 500. Catalog endpoints verified: POST /api/products/import-ai/text (Claude via Emergent LLM) returns count>0 with per-row _uncertain (list) and _exists (bool); GET /api/products/template returns valid .xlsx (PK zip signature, spreadsheet content-type); GET /api/catalog/status returns status ∈ {absent,incomplete,ready}; POST /api/products/import-ai/confirm mode='add' inserts new + skips duplicates (verified 2× add same product → inserted=1 then skipped=1), mode='update' updates matching product (verified price change 9.99 → 42.50 persisted via GET); PUT/GET/DELETE /api/catalog/import-draft round-trip works; GET /api/catalog/imports returns history entries with {mode, inserted, updated, skipped, total, created_at}. Frontend Playwright on /app/catalog + /app/setup/bridge: catalog-status badge shows 'Catalogo pronto 25 products', catalog-import-button opens catalog-wizard, ALL Step 1 source cards visible (src-excel, src-pdf, src-photo, src-paste, src-manual) + wizard-download-template; src-paste → wizard-paste-text textarea → wizard-paste-analyze → AI produces 6 preview rows in wizard-row-*; wizard-add-row bumps to 7 rows; wizard-save-draft persists; wizard-to-confirm advances to Step 3 showing mode-add + mode-update; wizard-confirm commits and closes the dialog with a green Italian success toast 'Catalogo confermato · +6 nuovi, ·0 aggiornati, 0 saltati' and catalog-import-history repopulates (8 log entries). Bridge UI: bridge-create-agent creates a card showing bridge-pairing-box-<id>, bridge-code-status-<id> (Valido pill), bridge-pairing-code-<id> (initial 928640), bridge-copy-code-<id>, bridge-regenerate-<id>, bridge-tech-email-<id>, bridge-send-instructions-<id>. Regenerate click changed visible code 928640 → 626632 within 2.5s. Delete removed the agent card cleanly. Cleanup: 6 wizard-inserted products removed via API (catalog back to 25 seed products; 0 TEST_ remnants). No console errors during flows (only benign accessibility warnings about DialogContent aria-describedby).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/bridge/agents/{id}/send-instructions",
+        "issue": "With a valid email address (test-recipient@example.com), Resend returns 502. Handler correctly converts to HTTP 502 with 'Invio email non riuscito. Riprova.' — not a 500, so no crash. Cause: the sandbox RESEND_API_KEY in /app/backend/.env with SENDER_EMAIL=onboarding@resend.dev can only send to the verified account holder's address; any other recipient triggers a Resend 422 which is caught and rethrown as 502. Consider (a) whitelisting a known verified test recipient, (b) softening 502→400 with a clearer message like 'Impossibile inviare a questo indirizzo — verifica il dominio del mittente su Resend' for a friendlier onboarding UX, and (c) surfacing a toast (not silent failure) on the frontend. Frontend does not currently show any user-visible feedback for the 502 case."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Bridge → Invia istruzioni al tecnico",
+        "issue": "When backend returns 502 (Resend send failure), no toast/error is visible to the user — the click appears silent. Recommend surfacing toast.error(t('Invio non riuscito, riprova')) on non-2xx responses from POST /bridge/agents/{id}/send-instructions.",
+        "affected_selectors": ["bridge-send-instructions-<id>"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Catalog Wizard modal",
+        "issues": [
+          "Console emits accessibility warning: 'Missing Description or aria-describedby={undefined} for {DialogContent}'. Add DialogDescription (or aria-describedby) inside <DialogContent data-testid='catalog-wizard'> in CatalogImportWizard.jsx to satisfy Radix a11y contract."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter22_bridge_catalog_onboarding.py",
+    "/app/test_reports/pytest/iter22.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Handle send-instructions 502 with a friendlier message and show a toast on the frontend when the call fails.",
+    "OPTIONAL: Add <DialogDescription> inside CatalogImportWizard's DialogContent to remove the Radix a11y console warning."
+  ],
+  "critical_code_review_comments": [
+    "bridge.py:325-339 regenerate_pairing_code() correctly enforces the 'not paired' precondition (400 with clear IT message) and uses a while-loop to avoid pairing_code collisions with other unpaired agents — perfect.",
+    "bridge.py:344-385 send_bridge_instructions() validates email format ('@' + '.' after @), guards missing RESEND_API_KEY with a friendly 400, and wraps Resend I/O in try/except returning 502 (never 500). The HTML template is well-crafted, mobile-safe inline CSS with the 6-digit code in a huge letter-spaced font — ideal for the target audience.",
+    "server.py:497-512 _annotate_preview() elegantly indexes existing products by lowercase name AND sku once, then flags every preview row with _exists + _uncertain (missing price / missing sku). This makes the wizard Step 2 visual signals accurate and cheap.",
+    "server.py:520-564 import_products_ai_confirm() correctly implements the mode='add' (skip existing) vs mode='update' (upsert) semantics with a single pass over products, records an audit trail in catalog_imports, and safely coerces price to float with a try/except fallback. Good, tight, single-purpose function.",
+    "server.py:589-602 catalog_status() thresholds: status='ready' unless >30% of products are missing price. Reasonable heuristic for the onboarding badge. Consider adding a 'has_pack_size_missing_pct' signal too for later polish, since the wizard now captures pack_size explicitly.",
+    "CatalogImportWizard.jsx:110-111 <DialogContent data-testid='catalog-wizard'> should include a <DialogDescription> for Radix a11y — currently emits a console warning on open.",
+    "BridgeSetup.js send-instructions handler swallows the 502 path silently (no toast.error). Recommend explicit error handling to complete the UX contract of 'clear feedback either way'.",
+    "server.py is 3401 lines — the catalog/products/import section (~250 lines, 429-635) is a good candidate for splitting into /app/backend/catalog.py in the same modular style as bridge.py. Already flagged in iter17-21; still pending.",
+    "Seed-product name collision risk: the AI extractor produces names WITHOUT SKU (e.g. 'Mozzarella Fiordilatte 400g') while the seed catalog uses distinct English names with SKUs (e.g. 'Extra Virgin Olive Oil' / OIL-050). Two catalog rows can therefore represent the same real-world product because match is only by (sku, name) — no fuzzy matching. Not a bug per se, but a UX gotcha the wizard could mitigate by fuzzy-matching against product.aliases on the confirm step."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter22_bridge_catalog_onboarding.py (NEW — 10 pytest tests, ~250 lines, session-scoped auth fixture, per-test throwaway agent + product cleanup)"
+  ],
+  "success_rate": {
+    "backend": "100% code-correct (9/10 PASS, 1 SKIP on Resend sandbox 502 — not a code bug). Full pytest run in 6.97s.",
+    "frontend": "100% (Catalog Import Wizard: status badge + open + all 5 source cards + template button + paste flow + AI 6-row preview + add-row → 7 rows + save-draft + step-3 modes + confirm → success toast + wizard close + import history refresh. Bridge Setup: create-agent + all pairing UI testids + regenerate changes code + send-instructions clicks (invalid+valid) do not crash + delete removes agent card cleanly)"
+  },
+  "test_credentials": "demo@ordia.app / demo123 (from /app/memory/test_credentials.md — login response field is access_token; header Authorization: Bearer <token>).",
+  "seed_data_creation": "During UI flow the wizard confirm inserted 6 products (Mozzarella Fiordilatte 400g, Passata di Pomodoro 700g, Parmigiano Reggiano 24 mesi, Olio Extravergine di Oliva 1L, TEST_iter22_wizard_prod_A, TEST_iter22_wizard_prod_B) and ~8 catalog_imports history entries were generated across pytest + UI runs. Backend tests created ~3 throwaway bridge_agents + 1 catalog_draft — all deleted in fixture teardown. Post-test cleanup: manually deleted the 6 wizard-inserted products via API — verified catalog is back to 25 seed products, 0 TEST_ remnants, 0 products with empty SKU. bridge_agents count = 0 test rows (verified UI delete on the created agent). catalog_imports history entries were NOT deleted (they are audit records — safe to keep as historical log; main agent can flush them if desired: db.catalog_imports.delete_many({}))",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_iter22_bridge_catalog_onboarding.py can be re-run stand-alone: cd /app/backend && python -m pytest tests/test_iter22_bridge_catalog_onboarding.py -v. It loads REACT_APP_BACKEND_URL from /app/frontend/.env. All P0 onboarding endpoints (Bridge pairing + Catalog wizard) are covered. RESEND_API_KEY is present in backend/.env but only verified for the account-holder's email; ANY other recipient triggers a Resend 422 → backend 502. Two touch-ups the main agent may want to make: (a) frontend toast on send-instructions failure, (b) add DialogDescription to CatalogImportWizard for a11y. Frontend testids to know: catalog-status, catalog-import-button, catalog-wizard, src-{excel,pdf,photo,paste,manual}, wizard-{download-template,paste-text,paste-analyze,row-*,add-row,save-draft,to-confirm,confirm}, mode-{add,update}, catalog-import-history, bridge-{create-agent,pairing-box-*,code-status-*,pairing-code-*,copy-code-*,regenerate-*,tech-email-*,send-instructions-*,agent-delete-*}. Cleanup helper: any product with empty SKU or name/SKU starting with TEST_ or TSKU-/HSKU- can be safely deleted via DELETE /api/products/{id}.",
+  "rca of the issue": "No blocking bugs. Only minor UX polish opportunities: (1) Resend sandbox → 502 needs a frontend toast to complete the UX (backend already returns a clear 502 not 500 so contract is technically respected), (2) a Radix a11y warning in the wizard DialogContent. Both are optional polish items — none blocks the customer-facing 'non-technical user can generate/use a Bridge code and import a catalog from any format' P0 goal. Everything else is green."
+}

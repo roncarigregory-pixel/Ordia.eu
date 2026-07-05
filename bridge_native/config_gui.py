@@ -2,20 +2,24 @@
 """Friendly setup window for Ordia Bridge (Tkinter, stdlib only).
 
 The only screen a non-technical user sees:
-  Welcome  ->  enter pairing code (or read it from the QR shown in Ordia)  ->  Connect
-  ->  "Bridge collegato con successo."
+  Welcome  ->  enter the connection code (or read it from the QR shown in Ordia)
+  ->  progress: Collegamento a Ordia… -> Verifica connessione… -> Bridge pronto
+  ->  a big green check: "Il Bridge è pronto."
 No terminal, no Docker, no config files.
 """
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 
 from ordia_bridge import pair, load_config, save_config, DEFAULT_BACKEND
 
 BG = "#0f172a"
+CARD = "#111c34"
 ACCENT = "#6366f1"
 OK = "#10b981"
 ERR = "#ef4444"
+MUTED = "#94a3b8"
 
 
 def launch_gui():
@@ -25,72 +29,126 @@ def launch_gui():
     root = tk.Tk()
     root.title("Ordia Bridge")
     root.configure(bg=BG)
-    root.geometry("460x420")
+    root.geometry("480x480")
     root.resizable(False, False)
 
     tk.Label(root, text="Ordia Bridge", bg=BG, fg="white",
-             font=("Segoe UI", 22, "bold")).pack(pady=(34, 4))
+             font=("Segoe UI", 22, "bold")).pack(pady=(30, 2))
     tk.Label(root, text="Collega Ordia al tuo gestionale in un minuto.",
-             bg=BG, fg="#94a3b8", font=("Segoe UI", 11)).pack()
+             bg=BG, fg=MUTED, font=("Segoe UI", 11)).pack()
 
     already = bool(cfg.get("token"))
-    status_var = tk.StringVar(value="Bridge già collegato ✓" if already else "")
 
-    frame = tk.Frame(root, bg=BG)
-    frame.pack(pady=26, padx=40, fill="x")
+    # --- container that we swap between "form" and "done" -----------------------
+    body = tk.Frame(root, bg=BG)
+    body.pack(fill="both", expand=True)
 
-    tk.Label(frame, text="Inserisci il codice di accoppiamento", bg=BG, fg="white",
-             font=("Segoe UI", 11)).pack(anchor="w")
-    tk.Label(frame, text="Lo trovi in Ordia → Configurazione → Bridge (puoi anche leggerlo dal QR Code).",
-             bg=BG, fg="#64748b", font=("Segoe UI", 8), wraplength=380, justify="left").pack(anchor="w", pady=(0, 8))
+    def clear_body():
+        for w in body.winfo_children():
+            w.destroy()
 
-    code_var = tk.StringVar()
-    entry = tk.Entry(frame, textvariable=code_var, font=("Consolas", 22), justify="center",
-                     width=8, bd=0, relief="flat")
-    entry.pack(ipady=8, fill="x")
-    entry.focus_set()
+    def show_done():
+        """Final screen: big green check + reassuring message."""
+        clear_body()
+        tk.Label(body, text="✓", bg=BG, fg=OK, font=("Segoe UI", 64, "bold")).pack(pady=(30, 4))
+        tk.Label(body, text="Il Bridge è pronto.", bg=BG, fg="white",
+                 font=("Segoe UI", 16, "bold")).pack()
+        tk.Label(body,
+                 text="Da questo momento gli ordini verranno inviati\nautomaticamente al tuo gestionale.",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 10), justify="center").pack(pady=(8, 0))
+        tk.Label(body, text="Puoi chiudere questa finestra: il Bridge lavora da solo in background.",
+                 bg=BG, fg="#64748b", font=("Segoe UI", 9), wraplength=380,
+                 justify="center").pack(pady=(14, 10))
+        tk.Button(body, text="Fatto", command=root.destroy, bg=OK, fg="white",
+                  font=("Segoe UI", 12, "bold"), bd=0, relief="flat", padx=40, pady=10,
+                  activebackground="#0ea472", cursor="hand2").pack(pady=6)
 
-    status = tk.Label(root, textvariable=status_var, bg=BG, fg=OK if already else "white",
-                      font=("Segoe UI", 10, "bold"), wraplength=380)
-    status.pack(pady=8)
+    def show_form():
+        clear_body()
+        frame = tk.Frame(body, bg=BG)
+        frame.pack(pady=(22, 6), padx=40, fill="x")
 
-    def do_connect():
-        code = code_var.get().strip()
-        if len(code) < 4:
-            status.config(fg=ERR); status_var.set("Inserisci il codice mostrato in Ordia.")
-            return
-        btn.config(state="disabled", text="Connessione…")
-        status.config(fg="white"); status_var.set("Connessione in corso…")
+        tk.Label(frame, text="Codice di collegamento", bg=BG, fg="white",
+                 font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        tk.Label(frame,
+                 text="Questo codice collega in modo sicuro il PC del tuo gestionale al tuo "
+                      "account Ordia. Lo trovi in Ordia → Impostazioni → Collega Bridge "
+                      "(puoi anche leggerlo dal QR Code).",
+                 bg=BG, fg="#64748b", font=("Segoe UI", 8), wraplength=390,
+                 justify="left").pack(anchor="w", pady=(2, 10))
 
-        def worker():
-            ok, msg = pair(backend, code)
-            def done():
+        code_var = tk.StringVar()
+        entry = tk.Entry(frame, textvariable=code_var, font=("Consolas", 24), justify="center",
+                         width=8, bd=0, relief="flat")
+        entry.pack(ipady=9, fill="x")
+        entry.focus_set()
+
+        status_var = tk.StringVar(value="")
+        status = tk.Label(body, textvariable=status_var, bg=BG, fg="white",
+                          font=("Segoe UI", 10, "bold"), wraplength=390)
+        status.pack(pady=(12, 4))
+
+        bar = ttk.Progressbar(body, mode="determinate", length=360, maximum=100)
+
+        # Persist consent for automatic log sharing (helps support).
+        consent = tk.BooleanVar(value=cfg.get("log_consent", True))
+
+        def save_consent():
+            c = load_config()
+            c["log_consent"] = consent.get()
+            c.setdefault("backend", backend)
+            save_config(c)
+
+        def set_step(text, pct):
+            status.config(fg="white")
+            status_var.set(text)
+            bar["value"] = pct
+            body.update_idletasks()
+
+        def do_connect():
+            code = code_var.get().strip()
+            if len(code) < 4:
+                status.config(fg=ERR)
+                status_var.set("Inserisci il codice mostrato in Ordia.")
+                return
+            btn.config(state="disabled", text="Collegamento…")
+            entry.config(state="disabled")
+            bar.pack(pady=(4, 2))
+
+            def worker():
+                root.after(0, lambda: set_step("Collegamento a Ordia…", 35))
+                time.sleep(0.4)
+                ok, msg = pair(backend, code)
                 if ok:
-                    status.config(fg=OK); status_var.set("Bridge collegato con successo ✓")
-                    btn.config(text="Fatto", state="normal", command=root.destroy)
-                    tk.Label(root, text="Puoi chiudere questa finestra. Il Bridge lavora da solo in background.",
-                             bg=BG, fg="#94a3b8", font=("Segoe UI", 9), wraplength=380).pack(pady=(0, 6))
+                    root.after(0, lambda: set_step("Verifica connessione…", 75))
+                    time.sleep(0.5)
+                    root.after(0, lambda: set_step("Bridge pronto.", 100))
+                    time.sleep(0.4)
+                    root.after(0, show_done)
                 else:
-                    status.config(fg=ERR); status_var.set(msg)
-                    btn.config(text="Riprova", state="normal")
-            root.after(0, done)
+                    def fail():
+                        bar.pack_forget()
+                        status.config(fg=ERR)
+                        status_var.set(msg)
+                        btn.config(text="Riprova", state="normal")
+                        entry.config(state="normal")
+                    root.after(0, fail)
 
-        threading.Thread(target=worker, daemon=True).start()
+            threading.Thread(target=worker, daemon=True).start()
 
-    btn = tk.Button(root, text="Connetti", command=do_connect, bg=ACCENT, fg="white",
-                    font=("Segoe UI", 12, "bold"), bd=0, relief="flat", padx=30, pady=10,
-                    activebackground="#4f46e5", cursor="hand2")
-    btn.pack(pady=6)
-    root.bind("<Return>", lambda e: do_connect())
+        btn = tk.Button(body, text="Connetti", command=do_connect, bg=ACCENT, fg="white",
+                        font=("Segoe UI", 12, "bold"), bd=0, relief="flat", padx=30, pady=10,
+                        activebackground="#4f46e5", cursor="hand2")
+        btn.pack(pady=6)
+        root.bind("<Return>", lambda e: do_connect())
 
-    # Persist consent for automatic log sharing (helps support).
-    consent = tk.BooleanVar(value=cfg.get("log_consent", True))
+        ttk.Checkbutton(body, text="Invia log a Ordia per assistenza (consigliato)",
+                        variable=consent, command=save_consent).pack(pady=(8, 0))
 
-    def save_consent():
-        c = load_config(); c["log_consent"] = consent.get(); c.setdefault("backend", backend); save_config(c)
-
-    ttk.Checkbutton(root, text="Invia log a Ordia per assistenza (consigliato)",
-                    variable=consent, command=save_consent).pack(pady=(6, 0))
+    if already:
+        show_done()
+    else:
+        show_form()
 
     root.mainloop()
 

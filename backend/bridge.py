@@ -39,8 +39,21 @@ def setup_bridge(api, ctx):
     EMERGENT_LLM_KEY = ctx["EMERGENT_LLM_KEY"]
 
     # ---- Ordia Bridge: agents, pairing, delivery queue, relay ------------------
+    CODE_TTL_HOURS = 168  # pairing code valid for 7 days, then must be regenerated
+
     def _gen_pairing_code() -> str:
         return f"{secrets.randbelow(1000000):06d}"
+
+    def _code_expiry() -> str:
+        return (datetime.now(timezone.utc) + timedelta(hours=CODE_TTL_HOURS)).isoformat()
+
+    def _code_expired(exp: Optional[str]) -> bool:
+        if not exp:
+            return False
+        try:
+            return datetime.fromisoformat(exp) < datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            return False
 
     def _agent_public(a: dict) -> dict:
         a = dict(a)
@@ -49,6 +62,8 @@ def setup_bridge(api, ctx):
         a.setdefault("maturity", "learning" if a.get("paired") else "unpaired")
         a.setdefault("readiness", 0.0)
         a.setdefault("dry_runs", 0)
+        if not a.get("paired") and a.get("pairing_code"):
+            a["code_status"] = "expired" if _code_expired(a.get("code_expires_at")) else "valid"
         return a
 
     # ---- Bridge maturity lifecycle: the agent LEARNS before it writes for real ----
@@ -197,12 +212,13 @@ def setup_bridge(api, ctx):
         doc = {
             "id": str(uuid.uuid4()), "company_id": user["company_id"], "name": body.name,
             "erp_name": body.erp_name, "profile_id": body.profile_id,
-            "pairing_code": code, "token": None, "paired": False, "active": True,
+            "pairing_code": code, "code_expires_at": _code_expiry(),
+            "token": None, "paired": False, "active": True,
             "status": "unpaired", "maturity": "unpaired", "last_seen": None, "created_at": now_iso(),
         }
         await db.bridge_agents.insert_one(dict(doc))
         doc.pop("_id", None)
-        return doc  # pairing_code returned in clear (needed once by the agent)
+        return _agent_public(doc)  # pairing_code returned in clear (needed once by the agent)
 
     @api.get("/bridge/agents")
     async def list_bridge_agents(user: dict = Depends(get_current_user)):
@@ -306,6 +322,68 @@ def setup_bridge(api, ctx):
         await db.bridge_agents.delete_one({"id": agent_id, "company_id": user["company_id"]})
         return {"ok": True}
 
+    @api.post("/bridge/agents/{agent_id}/regenerate-code")
+    async def regenerate_pairing_code(agent_id: str, user: dict = Depends(get_current_user)):
+        """Issue a fresh pairing code (e.g. after expiry). Only for a Bridge not yet paired."""
+        require_privileged(user)
+        agent = await db.bridge_agents.find_one({"id": agent_id, "company_id": user["company_id"]})
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agente non trovato")
+        if agent.get("paired"):
+            raise HTTPException(status_code=400, detail="Il Bridge è già collegato: non serve un nuovo codice.")
+        code = _gen_pairing_code()
+        while await db.bridge_agents.find_one({"pairing_code": code, "paired": False}):
+            code = _gen_pairing_code()
+        await db.bridge_agents.update_one({"id": agent_id},
+            {"$set": {"pairing_code": code, "code_expires_at": _code_expiry()}})
+        return _agent_public(await db.bridge_agents.find_one({"id": agent_id}, {"_id": 0}))
+
+    class SendInstructionsBody(BaseModel):
+        email: str
+
+    @api.post("/bridge/agents/{agent_id}/send-instructions")
+    async def send_bridge_instructions(agent_id: str, body: SendInstructionsBody,
+                                       user: dict = Depends(get_current_user)):
+        """Email the pairing code + plain-language install steps to a technician/colleague."""
+        require_privileged(user)
+        agent = await db.bridge_agents.find_one({"id": agent_id, "company_id": user["company_id"]}, {"_id": 0})
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agente non trovato")
+        if agent.get("paired"):
+            raise HTTPException(status_code=400, detail="Il Bridge è già collegato.")
+        email = (body.email or "").strip()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=400, detail="Inserisci un indirizzo email valido.")
+        if not RESEND_API_KEY:
+            raise HTTPException(status_code=400, detail="Invio email non configurato. Aggiungi RESEND_API_KEY.")
+        code = agent.get("pairing_code") or ""
+        html = f"""
+        <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+          <h2 style="margin:0 0 4px">Collega Ordia Bridge</h2>
+          <p style="color:#475569;margin:0 0 20px">Segui questi 3 passi sul computer dell'ufficio dove è installato il gestionale.</p>
+          <ol style="line-height:1.7;color:#334155;padding-left:18px">
+            <li><b>Scarica e installa</b> Ordia Bridge (doppio clic sul file, poi "Installa").</li>
+            <li>Quando appare la finestra, <b>inserisci il codice di collegamento</b> qui sotto e premi <b>Connetti</b>.</li>
+            <li>Attendi il messaggio <b>"Il Bridge è pronto."</b> Fatto: gli ordini arriveranno da soli nel gestionale.</li>
+          </ol>
+          <div style="text-align:center;margin:24px 0">
+            <div style="font-size:13px;color:#64748b;margin-bottom:6px">Codice di collegamento</div>
+            <div style="font-size:34px;font-weight:800;letter-spacing:10px;font-family:Consolas,monospace">{code}</div>
+          </div>
+          <p style="font-size:12px;color:#94a3b8;text-align:center">
+            Questo codice collega in modo sicuro il PC del gestionale all'account Ordia. Non condividerlo pubblicamente.
+          </p>
+        </div>"""
+        try:
+            await asyncio.to_thread(resend.Emails.send, {
+                "from": SENDER_EMAIL, "to": [email],
+                "subject": "Istruzioni per collegare Ordia Bridge", "html": html,
+            })
+        except Exception as e:
+            logger.warning("Bridge instructions email failed: %s", e)
+            raise HTTPException(status_code=502, detail="Invio email non riuscito. Riprova.")
+        return {"ok": True, "sent_to": email}
+
     class PairBody(BaseModel):
         pairing_code: str
 
@@ -316,6 +394,9 @@ def setup_bridge(api, ctx):
         agent = await db.bridge_agents.find_one({"pairing_code": body.pairing_code, "paired": False})
         if not agent:
             raise HTTPException(status_code=404, detail="Codice non valido o già usato")
+        if _code_expired(agent.get("code_expires_at")):
+            raise HTTPException(status_code=400,
+                detail="Codice scaduto. Rigeneralo in Ordia → Impostazioni → Collega Bridge.")
         token = secrets.token_urlsafe(32)
         await db.bridge_agents.update_one({"id": agent["id"]}, {"$set": {
             "token": token, "paired": True, "status": "online", "pairing_code": None,

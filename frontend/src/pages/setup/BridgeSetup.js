@@ -8,6 +8,7 @@ import {
   Radio, Plus, Trash, UploadSimple, CheckCircle, Copy, ArrowsClockwise, Cpu,
   GraduationCap, Circle, Lightning, PauseCircle, Notebook, WifiSlash,
   ChartLineUp, PaperPlaneTilt, CaretDown, CaretRight,
+  MapPin, ArrowClockwise, At, ShieldCheck, WarningCircle,
 } from "@phosphor-icons/react";
 
 const SOURCE_OPTIONS = [
@@ -168,14 +169,44 @@ function BridgeStatusStepper({ agent, t }) {
   );
 }
 
-function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause, simple }) {
+function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onActivate, onPause, onReload, simple }) {
   const { t } = useI18n();
+  const [techEmail, setTechEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const codeExpired = agent.code_status === "expired";
+
   const downloadInstaller = async () => {
     try {
       const { data } = await api.get("/bridge/installer/windows");
       if (data.available && data.url) window.open(data.url, "_blank");
       else toast.info(t("L'installer di Ordia Bridge sarà disponibile a breve. Contatta l'assistenza per riceverlo."));
     } catch { toast.error(t("Download non riuscito, riprova.")); }
+  };
+  const regenerate = async () => {
+    setRegenerating(true);
+    try { await api.post(`/bridge/agents/${agent.id}/regenerate-code`); toast.success(t("Nuovo codice generato")); onReload?.(); }
+    catch (e) { toast.error(formatApiError(e)); }
+    finally { setRegenerating(false); }
+  };
+  const sendInstructions = async () => {
+    if (!techEmail.trim()) return toast.error(t("Inserisci l'email del destinatario."));
+    setSending(true);
+    try { await api.post(`/bridge/agents/${agent.id}/send-instructions`, { email: techEmail.trim() }); toast.success(`${t("Istruzioni inviate a")} ${techEmail.trim()}`); setTechEmail(""); }
+    catch (e) { toast.error(formatApiError(e)); }
+    finally { setSending(false); }
+  };
+  const verifyConnection = async () => {
+    setVerifying(true);
+    try {
+      const { data } = await api.get("/bridge/agents");
+      const me = (data || []).find((a) => a.id === agent.id);
+      if (me?.status === "online" && me?.last_seen) toast.success(t("Bridge online e collegato ✓"));
+      else toast.error(t("Il Bridge non risulta online. Controlla che il computer sia acceso e connesso a internet."));
+      onReload?.();
+    } catch (e) { toast.error(formatApiError(e)); }
+    finally { setVerifying(false); }
   };
   const online = agent.status === "online" && agent.last_seen;
   const offline = agent.paired && agent.status === "offline";
@@ -214,20 +245,57 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
                   <UploadSimple size={16} className="rotate-180" /> {t("Scarica Ordia Bridge")}
                 </button>
               </div>
-              <div>
-                <p className="text-sm font-semibold">2 · {t("Inserisci questo codice")}</p>
-                <p className="text-xs text-muted-foreground mb-2">{t("Nella finestra che si apre, digita il codice (o scansiona il QR col telefono) e premi Connetti.")}</p>
-                <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2">
-                  <span data-testid={`bridge-pairing-code-${agent.id}`} className="font-mono text-2xl font-bold tracking-[0.3em]">{agent.pairing_code}</span>
-                  <button onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }} className="text-slate-400 hover:text-foreground">
-                    <Copy size={16} />
+
+              {/* Codice di collegamento — box evidente */}
+              <div data-testid={`bridge-pairing-box-${agent.id}`} className={`rounded-xl border p-4 ${codeExpired ? "border-red-200 bg-red-50/60" : "border-ai/25 bg-ai/5"}`}>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-sm font-bold text-foreground">2 · {t("Il tuo codice di accoppiamento")}</p>
+                  <span data-testid={`bridge-code-status-${agent.id}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${codeExpired ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-700"}`}>
+                    {codeExpired ? <><WarningCircle size={12} weight="fill" /> {t("Scaduto")}</> : <><CheckCircle size={12} weight="fill" /> {t("Valido")}</>}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {t("Questo codice serve per collegare il programma Ordia Bridge installato sul PC del tuo ufficio al tuo account Ordia. Inseriscilo durante l'installazione del Bridge.")}
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2">
+                    <span data-testid={`bridge-pairing-code-${agent.id}`} className={`font-mono text-2xl font-bold tracking-[0.3em] ${codeExpired ? "text-slate-400 line-through" : ""}`}>{agent.pairing_code}</span>
+                  </div>
+                  <button data-testid={`bridge-copy-code-${agent.id}`} disabled={codeExpired} onClick={() => { navigator.clipboard?.writeText(agent.pairing_code); toast.success(t("Codice copiato")); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50">
+                    <Copy size={15} /> {t("Copia codice")}
                   </button>
+                  <button data-testid={`bridge-regenerate-${agent.id}`} disabled={regenerating} onClick={regenerate}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50">
+                    <ArrowClockwise size={15} className={regenerating ? "animate-spin" : ""} /> {t("Rigenera codice")}
+                  </button>
+                </div>
+                {codeExpired && (
+                  <p className="mt-2 text-xs text-red-600">{t("Il codice è scaduto per sicurezza. Premi \"Rigenera codice\" per crearne uno nuovo.")}</p>
+                )}
+                <p className="mt-3 text-[11px] text-muted-foreground flex items-center gap-1">
+                  <MapPin size={12} className="text-ai shrink-0" />
+                  {t("Trovi sempre questo codice in: Ordia → Impostazioni → Collega Bridge.")}
+                </p>
+
+                {/* Invia istruzioni al tecnico */}
+                <div className="mt-3 border-t border-border/60 pt-3">
+                  <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5"><At size={13} className="text-ai" /> {t("Invia istruzioni al tecnico")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <input data-testid={`bridge-tech-email-${agent.id}`} type="email" value={techEmail} onChange={(e) => setTechEmail(e.target.value)}
+                      placeholder={t("email del tecnico o collega")}
+                      className="flex-1 min-w-[180px] rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                    <button data-testid={`bridge-send-instructions-${agent.id}`} disabled={sending} onClick={sendInstructions}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                      <PaperPlaneTilt size={15} /> {t("Invia")}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
             <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-white p-3 shrink-0">
               <QRCodeSVG value={`ORDIA-PAIR:${agent.pairing_code}`} size={104} data-testid={`bridge-qr-${agent.id}`} />
-              <span className="text-[10px] text-muted-foreground">{t("Scansiona il codice")}</span>
+              <span className="text-[10px] text-muted-foreground">{t("Oppure scansiona il QR")}</span>
             </div>
           </div>
           <div data-testid={`bridge-waiting-${agent.id}`} className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
@@ -237,7 +305,15 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
         </div>
       )}
 
-      {agent.paired && (<div className="mt-3"><BridgeStatusStepper agent={agent} t={t} /></div>)}
+      {agent.paired && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <BridgeStatusStepper agent={agent} t={t} />
+          <button data-testid={`bridge-verify-${agent.id}`} disabled={verifying} onClick={verifyConnection}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-white px-3 py-1.5 text-xs font-semibold hover:bg-secondary disabled:opacity-50">
+            <ShieldCheck size={14} className={verifying ? "animate-pulse" : "text-emerald-600"} /> {t("Verifica collegamento")}
+          </button>
+        </div>
+      )}
       {!simple && (<div className="mt-3 grid sm:grid-cols-2 gap-3">
         <Field label={t("Gestionale / ERP")}>
           <input className={inputCls} defaultValue={agent.erp_name || ""} placeholder="es. Danea, Business Central"
@@ -501,7 +577,7 @@ export default function BridgeSetup() {
         )}
 
         <div className="space-y-3">
-          {agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} diary={diary[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} simple={!showAdvanced} />)}
+          {agents.map((a) => <AgentCard key={a.id} agent={a} profiles={profiles} readiness={readiness[a.id]} diary={diary[a.id]} onChange={updateAgent} onDelete={deleteAgent} onActivate={activateAgent} onPause={pauseAgent} onReload={load} simple={!showAdvanced} />)}
         </div>
       </section>
 
