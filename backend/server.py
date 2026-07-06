@@ -1140,6 +1140,33 @@ async def extract_order(
     ))
     return processing
 
+def _order_bucket(o: dict):
+    """Reliability bucket for an order, consistent with the frontend dot.
+    Returns (bucket, reliability_pct, review_count). Buckets:
+      pending = still being read / no lines (neutral, not actionable)
+      done    = already sent to ERP (exported)
+      green   = ready & reliable (validated, or 0 review and >=90%)
+      amber   = needs some confirmation
+      red     = low reliability / critical
+    """
+    status = o.get("status")
+    li = o.get("line_items") or []
+    if status == "processing" or not li:
+        return "pending", 0, 0
+    pct = round(sum((i.get("confidence") or 0) for i in li) / len(li) * 100)
+    review = sum(1 for i in li if i.get("needs_review"))
+    if status == "exported":
+        return "done", pct, review
+    if status == "validated" or (review == 0 and pct >= 90):
+        return "green", pct, review
+    if pct >= 60:
+        return "amber", pct, review
+    return "red", pct, review
+
+
+_BUCKET_SORT = {"red": 0, "amber": 1, "green": 2, "pending": 3, "done": 4}
+
+
 @api.get("/orders")
 async def list_orders(
     user: dict = Depends(get_current_user),
@@ -1148,26 +1175,47 @@ async def list_orders(
     status: Optional[str] = None,
     q: Optional[str] = None,
     delivery: Optional[str] = None,
+    bucket: Optional[str] = None,
+    sort: Optional[str] = None,
 ):
     limit = max(1, min(limit, 200))
     skip = max(0, skip)
-    query: dict = {"company_id": user["company_id"]}
-    if status and status != "all":
-        query["status"] = status
+    base: dict = {"company_id": user["company_id"]}
     if q:
-        query["customer_name"] = {"$regex": re.escape(q), "$options": "i"}
+        base["customer_name"] = {"$regex": re.escape(q), "$options": "i"}
     if delivery and delivery != "all":
         if delivery == "delivered":
-            query["delivery_status"] = "delivered"
+            base["delivery_status"] = "delivered"
         elif delivery == "in_progress":
-            query["delivery_status"] = {"$in": ["pending", "claimed"]}
+            base["delivery_status"] = {"$in": ["pending", "claimed"]}
         elif delivery == "failed":
-            query["delivery_status"] = "failed"
+            base["delivery_status"] = "failed"
         elif delivery == "not_delivered":
-            query["delivery_status"] = {"$in": ["pending", "claimed", "failed"]}
-    total = await db.orders.count_documents(query)
-    items = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"items": items, "total": total, "limit": limit, "skip": skip}
+            base["delivery_status"] = {"$in": ["pending", "claimed", "failed"]}
+
+    # Fetch matching orders (capped) to compute reliability buckets, the
+    # operative summary counts, and to support critical-first sorting.
+    docs = await db.orders.find(base, {"_id": 0}).sort("created_at", -1).limit(1000).to_list(1000)
+    summary = {"green": 0, "amber": 0, "red": 0}
+    for o in docs:
+        b, pct, review = _order_bucket(o)
+        o["bucket"] = b
+        o["reliability"] = pct
+        o["review_count"] = review
+        if b in summary:
+            summary[b] += 1
+
+    filtered = docs
+    if status and status != "all":
+        filtered = [o for o in filtered if o.get("status") == status]
+    if bucket and bucket != "all":
+        filtered = [o for o in filtered if o.get("bucket") == bucket]
+    if sort == "critical":
+        filtered.sort(key=lambda o: (_BUCKET_SORT.get(o.get("bucket"), 9), o.get("reliability", 0)))
+
+    total = len(filtered)
+    page_items = filtered[skip:skip + limit]
+    return {"items": page_items, "total": total, "limit": limit, "skip": skip, "summary": summary}
 
 @api.get("/orders/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):

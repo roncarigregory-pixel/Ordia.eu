@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/context/I18nContext";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, ChevronRight, ChevronLeft, Check } from "lucide-react";
+import { Plus, Search, ChevronRight, ChevronLeft, Check, CheckCircle2, AlertTriangle, AlertOctagon, ArrowDownWideNarrow } from "lucide-react";
 
 // Mini stepper compatto per riga: Ricevuto → Confermato → Inviato → Consegnato
 function MiniTimeline({ status, delivered, t }) {
@@ -37,27 +37,52 @@ function MiniTimeline({ status, delivered, t }) {
   );
 }
 
-// Pallina di affidabilità per riga: verde = pronto/sicuro, arancione = qualche conferma, rosso = da controllare
+// Pallina di affidabilità per riga (usa il bucket calcolato dal backend, coerente con le card)
 function ReliabilityDot({ order, t }) {
-  const li = order.line_items || [];
-  const confirmed = order.status === "validated" || order.status === "exported";
-  const pct = li.length ? Math.round((li.reduce((s, i) => s + (i.confidence || 0), 0) / li.length) * 100) : 0;
-  const review = li.filter((i) => i.needs_review).length;
-  const color = confirmed || (review === 0 && pct >= 90)
-    ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500";
-  const label = confirmed
-    ? t("Confermato")
-    : review > 0
-      ? `${t("Affidabilità")} ${pct}% · ${review} ${t("da confermare")}`
-      : `${t("Affidabilità")} ${pct}% · ${t("pronto da inviare")}`;
+  const bucket = order.bucket;
+  const pct = order.reliability ?? 0;
+  const review = order.review_count ?? 0;
+  const map = {
+    green: { color: "bg-emerald-500", label: t("Pronto da inviare") },
+    amber: { color: "bg-amber-500", label: `${t("Affidabilità")} ${pct}% · ${review} ${t("da confermare")}` },
+    red: { color: "bg-red-500", label: `${t("Critico")} · ${t("Affidabilità")} ${pct}%` },
+    done: { color: "bg-emerald-500/60", label: t("Inviato al gestionale") },
+    pending: { color: "bg-slate-300", label: t("In lavorazione…") },
+  };
+  const m = map[bucket] || map.pending;
   return (
-    <span data-testid={`order-reliability-${order.id}`} className="inline-flex items-center gap-1.5" title={label}>
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />
-      {!confirmed && <span className="hidden text-xs font-medium tabular-nums text-muted-foreground xl:inline">{pct}%</span>}
+    <span data-testid={`order-reliability-${order.id}`} className="inline-flex items-center gap-1.5" title={m.label}>
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${m.color}`} />
+      {(bucket === "amber" || bucket === "red") && <span className="hidden text-xs font-medium tabular-nums text-muted-foreground xl:inline">{pct}%</span>}
     </span>
   );
 }
 
+
+const TONES = {
+  emerald: { ring: "ring-emerald-400", activeBg: "bg-emerald-50 border-emerald-300", icon: "text-emerald-600", count: "text-emerald-700" },
+  amber: { ring: "ring-amber-400", activeBg: "bg-amber-50 border-amber-300", icon: "text-amber-600", count: "text-amber-700" },
+  red: { ring: "ring-red-400", activeBg: "bg-red-50 border-red-300", icon: "text-red-600", count: "text-red-700" },
+};
+
+function OpsCard({ icon: Icon, count, title, hint, tone, active, onClick, testid }) {
+  const c = TONES[tone];
+  return (
+    <button data-testid={testid} onClick={onClick}
+      className={`group flex items-center gap-4 rounded-xl border p-4 text-left transition-all ${active ? `${c.activeBg} ring-2 ${c.ring}` : "border-border bg-white hover:border-slate-300 hover:shadow-sm"}`}>
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary ${c.icon}`}>
+        <Icon size={22} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className={`font-display text-2xl font-black tabular-nums ${c.count}`}>{count}</span>
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </button>
+  );
+}
 
 const FILTERS = [
   { key: "all", label: "Tutti" },
@@ -82,6 +107,8 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [delivery, setDelivery] = useState("all");
+  const [bucket, setBucket] = useState("all");
+  const [criticalFirst, setCriticalFirst] = useState(false);
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
@@ -95,19 +122,21 @@ export default function Orders() {
   }, [q]);
 
   // Reset to first page whenever filter/search changes.
-  useEffect(() => { setPage(0); }, [filter, delivery, debouncedQ]);
+  useEffect(() => { setPage(0); }, [filter, delivery, bucket, criticalFirst, debouncedQ]);
 
   useEffect(() => {
     setLoading(true);
     api
-      .get("/orders", { params: { limit: PAGE_SIZE, skip: page * PAGE_SIZE, status: filter, delivery, q: debouncedQ } })
+      .get("/orders", { params: { limit: PAGE_SIZE, skip: page * PAGE_SIZE, status: filter, delivery, bucket, sort: criticalFirst ? "critical" : "recent", q: debouncedQ } })
       .then(({ data }) => setData(data))
-      .catch(() => setData({ items: [], total: 0, limit: PAGE_SIZE, skip: 0 }))
+      .catch(() => setData({ items: [], total: 0, limit: PAGE_SIZE, skip: 0, summary: { green: 0, amber: 0, red: 0 } }))
       .finally(() => setLoading(false));
-  }, [filter, delivery, debouncedQ, page]);
+  }, [filter, delivery, bucket, criticalFirst, debouncedQ, page]);
 
   const items = data?.items || [];
   const total = data?.total || 0;
+  const summary = data?.summary || { green: 0, amber: 0, red: 0 };
+  const onCard = (b) => { setBucket((cur) => (cur === b ? "all" : b)); setFilter("all"); };
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
   const to = Math.min(total, page * PAGE_SIZE + items.length);
@@ -128,6 +157,19 @@ export default function Orders() {
         </button>
       </div>
 
+      {/* Dashboard operativa: 3 card cliccabili per capire in 5 secondi dove intervenire */}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <OpsCard testid="ops-card-green" active={bucket === "green"} onClick={() => onCard("green")}
+          icon={CheckCircle2} count={summary.green} title={t("Pronti da inviare")}
+          tone="emerald" hint={t("Affidabili, li puoi inviare al gestionale")} />
+        <OpsCard testid="ops-card-amber" active={bucket === "amber"} onClick={() => onCard("amber")}
+          icon={AlertTriangle} count={summary.amber} title={t("Da confermare")}
+          tone="amber" hint={t("Serve un rapido controllo prima dell'invio")} />
+        <OpsCard testid="ops-card-red" active={bucket === "red"} onClick={() => onCard("red")}
+          icon={AlertOctagon} count={summary.red} title={t("Critici")}
+          tone="red" hint={t("Bassa affidabilità: da sistemare")} />
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <div className="inline-flex flex-wrap gap-1 rounded-md border border-border bg-white p-1">
           {FILTERS.map((f) => (
@@ -141,7 +183,14 @@ export default function Orders() {
             </button>
           ))}
         </div>
-        <div className="relative flex-1 max-w-xs">
+        <button
+          data-testid="orders-sort-critical"
+          onClick={() => setCriticalFirst((v) => !v)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${criticalFirst ? "border-ai bg-ai/5 text-ai" : "border-input bg-white text-foreground hover:bg-secondary"}`}
+        >
+          <ArrowDownWideNarrow size={15} /> {t("Mostra prima quelli da controllare")}
+        </button>
+        <div className="relative flex-1 max-w-xs sm:ml-auto">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             data-testid="orders-search"
