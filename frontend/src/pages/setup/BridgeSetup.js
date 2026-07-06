@@ -175,7 +175,13 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
   const [sending, setSending] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [installer, setInstaller] = useState(null);
   const codeExpired = agent.code_status === "expired";
+
+  useEffect(() => {
+    api.get("/bridge/installer/windows").then(({ data }) => setInstaller(data)).catch(() => setInstaller({ available: false }));
+  }, []);
+  const installerReady = !!(installer && installer.available && installer.url);
 
   const downloadInstaller = async () => {
     try {
@@ -240,10 +246,17 @@ function AgentCard({ agent, profiles, readiness, diary, onChange, onDelete, onAc
               <div>
                 <p className="text-sm font-semibold">1 · {t("Scarica e installa")}</p>
                 <p className="text-xs text-muted-foreground mb-2">{t("Doppio clic sul file scaricato e segui la procedura. Nessun comando, niente Docker.")}</p>
-                <button data-testid={`bridge-download-${agent.id}`} onClick={downloadInstaller}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-                  <UploadSimple size={16} className="rotate-180" /> {t("Scarica Ordia Bridge")}
-                </button>
+                {installerReady ? (
+                  <button data-testid={`bridge-download-${agent.id}`} onClick={downloadInstaller}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+                    <UploadSimple size={16} className="rotate-180" /> {t("Scarica Ordia Bridge")}
+                  </button>
+                ) : (
+                  <div data-testid={`bridge-installer-soon-${agent.id}`} className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2.5">
+                    <p className="text-sm font-semibold text-amber-700">{t("Installer in arrivo a breve")}</p>
+                    <p className="text-xs text-amber-600 mt-0.5">{t("Stiamo preparando l'installer di Ordia Bridge. Nel frattempo puoi già usare Ordia normalmente. Per riceverlo subito, contatta l'assistenza.")}</p>
+                  </div>
+                )}
               </div>
 
               {/* Codice di collegamento — box evidente */}
