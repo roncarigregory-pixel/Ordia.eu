@@ -37,12 +37,12 @@ const PLACEHOLDER = {
 };
 
 const STAGES = [
-  "Caricamento sorgente",
-  "Estrazione AI",
-  "Riconoscimento cliente",
-  "Abbinamento catalogo",
-  "Calcolo confidenza",
-  "Ordine pronto",
+  "Sto ricevendo l'ordine…",
+  "Sto leggendo il contenuto…",
+  "Sto riconoscendo il cliente…",
+  "Sto riconoscendo i prodotti…",
+  "Sto confrontando con il tuo catalogo…",
+  "Ordine pronto per la revisione",
 ];
 
 export default function NewOrder() {
@@ -120,7 +120,7 @@ export default function NewOrder() {
           </span>
           <div>
             <h1 className="font-display text-xl font-bold tracking-tight">{t("Ordia sta leggendo l'ordine")}</h1>
-            <p className="text-sm text-muted-foreground">{t("Estrazione intelligente in corso…")}</p>
+            <p className="text-sm text-muted-foreground">{t("Ci vogliono solo pochi secondi. Non chiudere la pagina.")}</p>
           </div>
         </motion.div>
         <div className="space-y-2.5">
@@ -149,6 +149,7 @@ export default function NewOrder() {
             );
           })}
         </div>
+        <p className="mt-5 text-center text-xs text-muted-foreground">{t("Appena pronto ti porto alla schermata di revisione, dove controlli e confermi.")}</p>
       </div>
     );
   }

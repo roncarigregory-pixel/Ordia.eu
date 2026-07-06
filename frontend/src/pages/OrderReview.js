@@ -117,6 +117,17 @@ function SortableRow({ it, products, onMatch, onUpdate, onDuplicate, onRemove, o
             />
           </div>
 
+          {it.needs_review && (
+            <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+              <AlertTriangle size={12} className="shrink-0" />
+              {!it.matched_product_id
+                ? t("Prodotto non riconosciuto: scegline uno dai suggerimenti qui sotto o crealo.")
+                : !it.quantity
+                  ? t("Controlla la quantità: sembra mancante.")
+                  : t("Abbinamento incerto: verifica che il prodotto sia quello giusto.")}
+            </p>
+          )}
+
           {it.matched_product_id ? (
             <p className="mt-2 font-mono text-xs text-muted-foreground">
               {it.matched_sku} · €{(it.price || 0).toFixed(2)}/{it.unit} · {t("riga")} €{((it.price || 0) * (it.quantity || 0)).toFixed(2)}
@@ -431,11 +442,28 @@ export default function OrderReview() {
         </motion.div>
       )}
 
-      {reviewCount > 0 && !confirmed && (
-        <div data-testid="review-banner" className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          <AlertTriangle size={17} />
-          {reviewCount === 1 ? t("review.banner.one", { n: reviewCount }) : t("review.banner.many", { n: reviewCount })}
-        </div>
+      {!confirmed && (
+        reviewCount > 0 ? (
+          <div data-testid="review-banner" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">{t("L'AI ha letto l'ordine — servono alcune conferme.")}</p>
+              <p className="mt-0.5 text-amber-700">
+                {reviewCount === 1
+                  ? t("C'è 1 riga da controllare (prodotto non riconosciuto o quantità incerta), evidenziata in arancione qui sotto. Sistemala e premi «Conferma ordine».")
+                  : t("Ci sono {n} righe da controllare (prodotto non riconosciuto o quantità incerta), evidenziate qui sotto. Sistemale e premi «Conferma ordine».", { n: reviewCount })}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div data-testid="ready-banner" className="mb-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">{t("Tutto pronto per la conferma.")}</p>
+              <p className="mt-0.5 text-emerald-700">{t("L'AI ha abbinato tutti i prodotti al tuo catalogo. Controlla il riepilogo e premi «Conferma ordine» per procedere.")}</p>
+            </div>
+          </div>
+        )
       )}
 
       {order.status === "validated" && (
