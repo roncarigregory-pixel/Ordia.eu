@@ -45,7 +45,7 @@ export default function Setup() {
       ) : (
         <div className="rounded-md border border-border bg-white p-6 mb-8">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Avanzamento setup")}</span>
+            <span className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">{t("Avanzamento configurazione")}</span>
             <span data-testid="setup-progress" className="font-mono text-sm font-medium">{data.completed}/{data.total} · {data.progress}%</span>
           </div>
           <div className="h-2 rounded-full bg-secondary overflow-hidden">

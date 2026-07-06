@@ -529,7 +529,7 @@ const EN = {
 
   // Setup
   "Il tuo consulente tecnico integrato. Collega i canali d'ordine e l'ERP passo dopo passo.": "Your built-in technical consultant. Connect order channels and your ERP step by step.",
-  "Avanzamento setup": "Setup progress",
+  "Avanzamento configurazione": "Setup progress",
   "Dati azienda": "Company details",
   "Ragione sociale, P.IVA, valuta e recapiti.": "Business name, VAT, currency and contacts.",
   "Catalogo prodotti": "Product catalog",
@@ -1005,8 +1005,7 @@ function detectLang() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "it" || stored === "en") return stored;
   } catch { /* ignore */ }
-  const nav = (typeof navigator !== "undefined" && (navigator.language || navigator.userLanguage)) || "";
-  return nav.toLowerCase().startsWith("it") ? "it" : "en";
+  return "it"; // Ordia is Italian-first: default to Italian for every new visitor
 }
 
 function interpolate(str, vars) {
