@@ -1153,7 +1153,10 @@ def _order_bucket(o: dict):
     li = o.get("line_items") or []
     if status == "processing" or not li:
         return "pending", 0, 0
-    pct = round(sum((i.get("confidence") or 0) for i in li) / len(li) * 100)
+    # Average only over line items that actually carry a confidence score.
+    # Manually-entered lines (no confidence) are trusted, not penalised.
+    confs = [i.get("confidence") for i in li if isinstance(i.get("confidence"), (int, float))]
+    pct = round(sum(confs) / len(confs) * 100) if confs else 100
     review = sum(1 for i in li if i.get("needs_review"))
     if status == "exported":
         return "done", pct, review

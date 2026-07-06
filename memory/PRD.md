@@ -16,6 +16,13 @@ UI e comunicazione con l'utente: **ITALIANO**. Benchmark UX: Stripe / Linear.
 Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-ready.
 
 ## ✅ Completato
+### 📊 Dashboard operativa Ordini + affidabilità (6 Lug 2026, iteration_25, 12/12 backend + FE pass)
+- **Indicatore di affidabilità** per ordine: barra "Affidabilità dell'ordine XX%" in Revisione (`OrderReview.js`) e pallina colorata per riga nella lista (`Orders.js` ReliabilityDot). Verde=pronto/sicuro, arancione=da confermare (con %), rosso=critico, grigio=in lavorazione, verde tenue=inviato.
+- **Backend `/orders`** ora calcola per ordine `bucket` (green/amber/red/done/pending), `reliability` (%), `review_count`; ritorna `summary` {green,amber,red} su tutti gli ordini (cap 1000); supporta filtro `bucket=` e `sort=critical` (rosso→arancione→verde, % crescente). Media confidenza calcolata solo sulle righe che hanno confidence (righe manuali non penalizzate).
+- **Dashboard operativa** in cima a /app/orders: 3 card cliccabili (Pronti da inviare / Da confermare / Critici) che filtrano la lista, + toggle "Mostra prima quelli da controllare" (ordinamento critico→affidabile). Obiettivo: capire in 5 secondi dove intervenire.
+- Futuro (scalabilità >1000 ordini/tenant): spostare summary+bucket in aggregazione Mongo o persistere bucket/reliability sull'ordine in scrittura + indice (company_id, created_at).
+
+
 ### 🇮🇹 Italiano di default + UX fiducia/zero-dubbi (6 Lug 2026, iteration_24, 100% pass)
 - **Italiano lingua predefinita** (`I18nContext.detectLang` → "it"): tutta l'interfaccia in italiano per ogni nuovo visitatore. Corretta etichetta "Avanzamento configurazione". Toggle IT/EN resta disponibile.
 - **Catalogo seed tradotto in italiano** (`catalog_seed.py`): ogni nuova azienda parte con 25 prodotti esempio italiani (Pomodori Roma, Mozzarella, Farina 00…).
