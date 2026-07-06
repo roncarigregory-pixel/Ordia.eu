@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, CheckCircle2, Check, Trash2, Copy, Plus, Download, AlertTriangle, Loader2,
-  FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck,
+  FileText, GripVertical, Sparkles, History, ChevronDown, ImageIcon, Mail, MessageSquare, UserCheck, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrderTimeline } from "@/components/order/OrderTimeline";
@@ -336,6 +336,14 @@ export default function OrderReview() {
 
   const total = order.line_items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0);
   const reviewCount = order.line_items.filter((i) => i.needs_review).length;
+  const reliability = order.line_items.length
+    ? Math.round((order.line_items.reduce((s, i) => s + (i.confidence || 0), 0) / order.line_items.length) * 100)
+    : 0;
+  const relColor = reviewCount === 0 && reliability >= 90
+    ? { text: "text-emerald-600", bar: "bg-emerald-500" }
+    : reliability >= 60
+      ? { text: "text-amber-600", bar: "bg-amber-500" }
+      : { text: "text-red-600", bar: "bg-red-500" };
   const confirmed = order.status === "validated" || order.status === "exported";
   const isImage = (order.source_type === "file" || order.source_type === "image") && /\[Immagine/i.test(order.source_preview || "");
 
@@ -440,6 +448,27 @@ export default function OrderReview() {
             {(!order.history || order.history.length === 0) && <p className="px-4 py-3 text-sm text-muted-foreground">{t("Nessuna attività.")}</p>}
           </div>
         </motion.div>
+      )}
+
+      {!confirmed && order.line_items.length > 0 && (
+        <div data-testid="reliability-meter" className="mb-4 rounded-xl border border-border bg-white p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldCheck size={16} className={relColor.text} /> {t("Affidabilità dell'ordine")}
+            </span>
+            <span data-testid="reliability-score" className={cn("font-display text-lg font-bold", relColor.text)}>{reliability}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+            <div className={cn("h-full rounded-full transition-all duration-500", relColor.bar)} style={{ width: `${reliability}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {reviewCount > 0
+              ? (reviewCount === 1
+                ? t("1 riga da confermare prima dell'invio.")
+                : t("{n} righe da confermare prima dell'invio.", { n: reviewCount }))
+              : t("Tutte le righe sono abbinate: puoi confermare con sicurezza.")}
+          </p>
+        </div>
       )}
 
       {!confirmed && (
