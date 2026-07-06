@@ -37,6 +37,28 @@ function MiniTimeline({ status, delivered, t }) {
   );
 }
 
+// Pallina di affidabilità per riga: verde = pronto/sicuro, arancione = qualche conferma, rosso = da controllare
+function ReliabilityDot({ order, t }) {
+  const li = order.line_items || [];
+  const confirmed = order.status === "validated" || order.status === "exported";
+  const pct = li.length ? Math.round((li.reduce((s, i) => s + (i.confidence || 0), 0) / li.length) * 100) : 0;
+  const review = li.filter((i) => i.needs_review).length;
+  const color = confirmed || (review === 0 && pct >= 90)
+    ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500";
+  const label = confirmed
+    ? t("Confermato")
+    : review > 0
+      ? `${t("Affidabilità")} ${pct}% · ${review} ${t("da confermare")}`
+      : `${t("Affidabilità")} ${pct}% · ${t("pronto da inviare")}`;
+  return (
+    <span data-testid={`order-reliability-${order.id}`} className="inline-flex items-center gap-1.5" title={label}>
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />
+      {!confirmed && <span className="hidden text-xs font-medium tabular-nums text-muted-foreground xl:inline">{pct}%</span>}
+    </span>
+  );
+}
+
+
 const FILTERS = [
   { key: "all", label: "Tutti" },
   { key: "needs_review", label: "Da Revisionare" },
@@ -171,7 +193,12 @@ export default function Orders() {
                   onClick={() => navigate(`/app/orders/${o.id}`)}
                   className="cursor-pointer hover:bg-secondary/50 transition-colors"
                 >
-                  <td className="px-5 py-3 font-medium">{o.customer_name || t("Cliente sconosciuto")}</td>
+                  <td className="px-5 py-3 font-medium">
+                    <div className="flex items-center gap-2">
+                      <ReliabilityDot order={o} t={t} />
+                      {o.customer_name || t("Cliente sconosciuto")}
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground font-mono hidden sm:table-cell">{o.line_items.length}</td>
                   <td className="px-5 py-3 text-muted-foreground hidden md:table-cell">{t(`ch.${o.source_type}`)}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
