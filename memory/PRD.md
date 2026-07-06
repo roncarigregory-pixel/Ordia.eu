@@ -16,6 +16,14 @@ UI e comunicazione con l'utente: **ITALIANO**. Benchmark UX: Stripe / Linear.
 Ogni milestone: funzionante, testata E2E, responsive, NO dati fake, production-ready.
 
 ## ✅ Completato
+### 🇮🇹 Italiano di default + UX fiducia/zero-dubbi (6 Lug 2026, iteration_24, 100% pass)
+- **Italiano lingua predefinita** (`I18nContext.detectLang` → "it"): tutta l'interfaccia in italiano per ogni nuovo visitatore. Corretta etichetta "Avanzamento configurazione". Toggle IT/EN resta disponibile.
+- **Catalogo seed tradotto in italiano** (`catalog_seed.py`): ogni nuova azienda parte con 25 prodotti esempio italiani (Pomodori Roma, Mozzarella, Farina 00…).
+- **Nuovo Ordine — fiducia**: fasi di avanzamento umane e rassicuranti ("Sto ricevendo l'ordine…", "Sto leggendo il contenuto…", "Sto riconoscendo il cliente…", "Sto riconoscendo i prodotti…", "Sto confrontando con il tuo catalogo…", "Ordine pronto per la revisione") + sottotitolo "non chiudere la pagina, pochi secondi".
+- **Revisione ordine — zero dubbi**: banner adattivo "cosa fare adesso" (`review-banner` quando ci sono righe incerte con spiegazione + prossimo passo; `ready-banner` "Tutto pronto per la conferma" quando tutto abbinato); ogni riga incerta mostra il MOTIVO (prodotto non riconosciuto / quantità mancante / abbinamento incerto); suggerimenti catalogo 1-clic già presenti; conferma → invio al gestionale con banner di stato.
+- **Download Bridge**: pulsante mostra stato pulito "Installer in arrivo a breve" quando `BRIDGE_INSTALLER_URL` non è impostato.
+
+
 ### 🧭 Onboarding guidato login→primo ordine (5 Lug 2026, iteration_23, 100% E2E pass)
 - **Checklist di onboarding live** (`components/OnboardingChecklist.jsx`, card in cima alla Dashboard): 5 step basati sullo stato REALE,
   si aggiorna da solo e scompare quando i required sono completati (o su "Nascondi").

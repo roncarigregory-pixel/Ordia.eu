@@ -272,11 +272,11 @@ export default function OrderReview() {
   };
 
   const sendEmail = async () => {
-    if (!recipient.trim()) return toast.error("Inserisci un'email destinatario.");
+    if (!recipient.trim()) return toast.error(t("Inserisci un'email destinatario."));
     setSending(true);
     try {
       await api.post(`/orders/${id}/send-email`, { recipient_email: recipient.trim(), message: emailMsg, kind: emailDlg.kind });
-      toast.success(emailDlg.kind === "clarification" ? "Richiesta di chiarimento inviata" : "Email di conferma inviata");
+      toast.success(emailDlg.kind === "clarification" ? t("Richiesta di chiarimento inviata") : t("Email di conferma inviata"));
       setEmailDlg({ open: false, kind: "confirmation" });
       load();
     } catch (err) {
